@@ -1,12 +1,13 @@
-Proposal: Deferred Breakpoints and Line-Snapping
-=================================================
+Proposal: Deferred Breakpoints, Line-Snapping, Path Normalization,
+and Breakpoint Re-application
+==================================================================
 
-Two changes to Maxima's debugger to improve breakpoint usability,
+Four changes to Maxima's debugger to improve breakpoint usability,
 particularly for IDE/DAP integration.  See breakpoints.txt for
 background on the current implementation and its limitations.
 
 Status: IMPLEMENTED.  See git log for the deferred-breakpoints
-branch.  Tests in tests/rtest_debugger.mac (23 tests, all passing).
+branch.  Tests in tests/rtest_debugger.mac (34 tests, all passing).
 
 
 A. Deferred Breakpoints
@@ -53,15 +54,16 @@ Changes:
    calls break-function with the filename and absolute line to
    re-enter the normal resolution path (which now succeeds
    because the function is defined).  Unresolved entries are
-   kept in the pending list.
+   kept in the pending list.  Filenames are normalized via
+   probe-file before comparison (see section C).
 
 4. Hook location in mdefine (mlisp.lisp):
 
-   resolve-pending-breakpoints is called after mputprop stores
-   the mexpr (break-function needs the mexpr to exist):
+   The mdefine hook runs after mputprop stores the mexpr:
 
      (set-lineinfo fnname (cadar fun) body)
      (mputprop fnname (mdefine1 args body) 'mexpr)
+     (reapply-breakpoints-for-function fnname)
      (resolve-pending-breakpoints fnname (cadar fun))
 
 5. New :pending debugger command:
@@ -106,7 +108,7 @@ Changes:
 
      "Line N has no executable code; adjusted to line M"
 
-3. Stepping behavior — no change:
+3. Stepping behavior -- no change:
 
    The stepping functions (break-step-into, break-step-next)
    already stop on the next form that meval1 evaluates.  The
@@ -116,70 +118,134 @@ Changes:
    execution actually stopped.
 
 
-C. Summary of Files Changed
+C. Path Normalization
+======================
+
+Goal: breakpoint filename matching should work regardless of
+whether the user provides a relative path, absolute path, or
+path through symlinks.
+
+Problem: get-instream (nparse.lisp) stored (namestring str) as
+the stream name -- whatever the OS returned, often a relative
+path.  Meanwhile $load_pathname in batchload-stream (mload.lisp)
+used (probe-file stream) which returns the truename (absolute,
+symlinks resolved).  This mismatch caused breakpoints set via
+absolute paths to fail to match lineinfo stored as relative paths.
+
+Changes:
+
+1. Modified get-instream (nparse.lisp):
+
+   Changed the name binding from (namestring str) to use
+   probe-file when available, falling back to namestring:
+
+     (let ((truename (probe-file str)))
+       (if truename
+           (namestring truename)
+           (namestring str)))
+
+   This makes lineinfo paths consistent with $load_pathname.
+
+2. Modified break-function (mdebug.lisp):
+
+   When break-function receives a string filename, it normalizes
+   via probe-file before the symbol scan:
+
+     (let ((file (let ((truename (probe-file fun)))
+                   (if truename (namestring truename) fun)))
+           ...)
+
+3. Modified resolve-pending-breakpoints (mdebug.lisp):
+
+   Pending breakpoints store the original user-provided filename
+   (at defer time the file doesn't exist, so probe-file can't
+   normalize it).  At resolution time the file exists, so
+   probe-file normalizes the pending path before comparison:
+
+     (let ((bp-file (let ((truename (probe-file (first bp))))
+                      (if truename (namestring truename) (first bp)))))
+       (if (equal bp-file file) ...))
+
+
+D. Breakpoint Re-application on Redefinition
+==============================================
+
+Goal: when a function is redefined (e.g. by reloading its file),
+existing breakpoints should automatically transfer to the new
+definition instead of becoming stale.
+
+Problem: breakpoints match by eq form identity in meval1.  When a
+function is redefined, its body is a new set of form objects.
+Existing breakpoints reference old form objects and never trigger.
+
+Changes:
+
+1. New function reapply-breakpoints-for-function (mdebug.lisp):
+
+   Called from mdefine before resolve-pending-breakpoints.
+   Collects absolute line numbers (bkpt-file-line) from the
+   function's existing breakpoints, deletes the stale entries
+   via iterate-over-bkpts, then re-applies each breakpoint at
+   the same absolute line number using break-function (which
+   uses nearest-executable-line to handle minor line shifts).
+
+2. Hook location in mdefine (mlisp.lisp):
+
+   reapply-breakpoints-for-function is called after mputprop
+   (so the new mexpr is available) and before
+   resolve-pending-breakpoints (so pending breakpoints don't
+   interfere):
+
+     (mputprop fnname (mdefine1 args body) 'mexpr)
+     (reapply-breakpoints-for-function fnname)
+     (resolve-pending-breakpoints fnname (cadar fun))
+
+
+E. Summary of Files Changed
 ============================
 
   src/mdebug.lisp:
     - New variable *pending-breakpoints*
-    - New function resolve-pending-breakpoints
+    - New function resolve-pending-breakpoints (with path normalization)
+    - New function reapply-breakpoints-for-function
     - New function nearest-executable-line
-    - Modified break-function (deferred + snap logic)
+    - Modified break-function (deferred + snap + path normalization)
     - New :pending debugger command
     - New Maxima functions: set_breakpoint, pending_breakpoints,
       clear_breakpoints, breakpoint_count, valid_breakpoint_count
 
   src/mlisp.lisp:
-    - Added resolve-pending-breakpoints call in mdefine,
+    - Added reapply-breakpoints-for-function and
+      resolve-pending-breakpoints calls in mdefine,
       after mputprop stores the mexpr
+
+  src/nparse.lisp:
+    - Modified get-instream to normalize stream names via
+      probe-file (truename)
 
   src/testsuite.lisp:
     - Registered rtest_debugger
 
   tests/rtest_debugger.mac:
-    - 31 tests covering basic breakpoints, deferred breakpoints,
-      resolution on load, redefinition staleness, and cleanup
+    - 34 tests covering basic breakpoints, deferred breakpoints,
+      resolution on load, breakpoint re-application on
+      redefinition, path normalization, and cleanup
 
   tests/test_debugger_helper.mac:
     - Helper file loaded by the test to exercise deferred
-      breakpoint resolution
+      breakpoint resolution and redefinition
 
 
-D. Not Implemented (future work)
+F. Not Implemented (future work)
 =================================
 
-1. Path normalization:
-
-   The equal filename comparison in break-function and
-   resolve-pending-breakpoints is not normalized.  If the user
-   passes a different path form than what the loader stores
-   (e.g. relative vs absolute, symlinks), matching fails.
-
-   Fix: normalize via truename in add-lineinfo (nparse.lisp)
-   at parse time.  This would also fix the existing file-path
-   breakpoint bug documented in breakpoints.txt section 5.
-
-2. Macro debugging:
+1. Macro debugging:
 
    mdefmacro does not call set-lineinfo or the resolver, so
    deferred breakpoints won't resolve for macros.
 
-3. Breakpoint re-application on redefinition:
 
-   When a function is redefined, existing breakpoints become
-   stale — they still exist in *break-points* but reference
-   old form objects that will never match in meval1.  This is
-   verified by rtest_debugger.mac test 6 (breakpoint_count()
-   stays 1 but valid_breakpoint_count() drops to 0).
-
-   The mdefine hook point (where resolve-pending-breakpoints
-   is called) is a natural place to add re-application logic:
-   before resolving pending breakpoints, check if the function
-   already has active breakpoints, save their line offsets,
-   delete the stale breakpoints, and re-apply at the same
-   offsets on the new body.  Not yet implemented.
-
-
-E. Alternatives Considered
+G. Alternatives Considered
 ===========================
 
 1. Hook into set-lineinfo instead of mdefine:
@@ -193,7 +259,7 @@ E. Alternatives Considered
 2. Hook into batchload instead of mdefine:
 
    Resolve pending breakpoints after an entire file finishes
-   loading.  Simpler hook point but less immediate — if file A
+   loading.  Simpler hook point but less immediate -- if file A
    loads file B (via load() inside A), breakpoints in B wouldn't
    resolve until A finishes.  Rejected in favor of per-definition
    resolution.
@@ -224,3 +290,9 @@ E. Alternatives Considered
    so breakpoints couldn't transfer (they match by eq identity).
    Still requires a deferred mechanism.  Adds complexity with
    no real benefit over simply deferring.
+
+6. Normalize paths in add-lineinfo instead of get-instream:
+
+   Could normalize in add-lineinfo (nparse.lisp) instead.  But
+   get-instream is the single point where stream names are stored,
+   so normalizing there is simpler and catches all callers.
