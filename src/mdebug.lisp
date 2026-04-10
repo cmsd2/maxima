@@ -155,15 +155,38 @@
       (when file
 	(let ((remaining nil))
 	  (dolist (bp *pending-breakpoints*)
-	    (if (equal (first bp) file)
-		(progn
-		  (format t "~&Resolving deferred breakpoint ~a:~a~%"
-			  (first bp) (second bp))
-		  (unless (break-function (first bp) (second bp) t)
-		    ;; Still couldn't resolve — keep it pending
-		    (push bp remaining)))
-		(push bp remaining)))
+	    (let ((bp-file (let ((truename (probe-file (first bp))))
+			     (if truename (namestring truename) (first bp)))))
+	      (if (equal bp-file file)
+		  (progn
+		    (format t "~&Resolving deferred breakpoint ~a:~a~%"
+			    (first bp) (second bp))
+		    (unless (break-function (first bp) (second bp) t)
+		      ;; Still couldn't resolve — keep it pending
+		      (push bp remaining)))
+		  (push bp remaining))))
 	  (setq *pending-breakpoints* (nreverse remaining)))))))
+
+(defun reapply-breakpoints-for-function (fnname)
+  "When a function is redefined, find its stale breakpoints,
+   delete them, and re-apply at the same absolute line numbers."
+  (let ((bp-indices (get fnname 'break-points)))
+    (when (and bp-indices *break-points*)
+      (let ((lines-to-reapply nil))
+	;; Collect absolute line numbers from existing breakpoints
+	(dolist (idx bp-indices)
+	  (let ((bpt (and (< idx (length *break-points*))
+			  (aref *break-points* idx))))
+	    (when bpt
+	      (let ((raw-bpt (if (null (car bpt)) (cdr bpt) bpt)))
+		(push (bkpt-file-line raw-bpt) lines-to-reapply)))))
+	;; Delete all existing breakpoints for this function
+	(iterate-over-bkpts bp-indices :delete)
+	;; Re-apply each breakpoint at the same absolute line
+	(dolist (line (nreverse lines-to-reapply))
+	  (format t "~&Re-applying breakpoint for ~a at line ~a~%"
+		  ($sconcat fnname) line)
+	  (break-function fnname line t))))))
 
 (defvar *break-step* nil)
 (defvar *step-next* nil)
@@ -539,7 +562,9 @@ Command      Description~%~
     (format t "~&Turning on debugging debugmode(true)~%")
     (setq *mdebug* t))
   (cond ((stringp fun)
-	 (let ((file fun)  start)
+	 (let ((file (let ((truename (probe-file fun)))
+		       (if truename (namestring truename) fun)))
+	       start)
 	   (loop named joe for vv being the symbols of 'maxima with tem with linfo
 		  when (and (typep (setq tem (set-full-lineinfo vv))
 				   'vector)

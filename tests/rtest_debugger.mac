@@ -92,7 +92,7 @@ done;
 length(pending_breakpoints());
 0;
 
-/* === Test 6: Breakpoints become stale on redefinition === */
+/* === Test 6: Breakpoints re-applied on redefinition === */
 
 /* Load a file-defined function so it has lineinfo */
 (load(file_search("test_debugger_helper", file_search_tests)), 0);
@@ -109,16 +109,30 @@ breakpoint_count();
 valid_breakpoint_count();
 1;
 
-/* Reload the file — redefines the function with new form objects */
+/* Reload the file — redefines the function, breakpoints re-applied */
 (load(file_search("test_debugger_helper", file_search_tests)), 0);
 0;
 
-/* Breakpoint entry still exists but form is now stale */
+/* Breakpoint should still be valid (re-applied to new body) */
 breakpoint_count();
 1;
 
 valid_breakpoint_count();
+1;
+
+(clear_breakpoints(), kill(test_debugger_func), 0);
 0;
+
+/* === Test 7: Path normalization — breakpoint via absolute path === */
+
+/* Load helper file, then set breakpoint using file_search path */
+(load(file_search("test_debugger_helper", file_search_tests)), 0);
+0;
+
+/* file_search returns the absolute path; set_breakpoint should match */
+block([p : file_search("test_debugger_helper", file_search_tests)],
+  is(set_breakpoint(p, 4) >= 0));
+true;
 
 (clear_breakpoints(), kill(test_debugger_func), 0);
 0;
