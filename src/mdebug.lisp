@@ -578,22 +578,28 @@ Command      Description~%~
   (cond ((stringp fun)
 	 (let ((file (let ((truename (probe-file fun)))
 		       (if truename (namestring truename) fun)))
-	       start)
+	       start file-found)
 	   (loop named joe for vv being the symbols of 'maxima with tem with linfo
-		  when (and (typep (setq tem (set-full-lineinfo vv))
-				   'vector)
-			    (setq linfo (get-lineinfo (aref tem 1)))
-			    (equal file (cadr linfo))
-			    (fb >= li (setq start (aref tem 0)))
-			    (fb <= li (+ start (length (the vector tem)))))
-		  do (setq fun vv li (f- li start -1))
-				; (print (list 'found fun fun li  (aref tem 0)))
-		  (return-from joe nil)
+		  when (typep (setq tem (set-full-lineinfo vv)) 'vector)
+		  do (setq linfo (get-lineinfo (aref tem 1)))
+		     (when (and linfo (equal file (cadr linfo)))
+		       (setq file-found t)
+		       (when (and (fb >= li (setq start (aref tem 0)))
+				  (fb <= li (+ start (length (the vector tem)))))
+			 (setq fun vv absolute t)
+			 (return-from joe nil)))
 		  finally
-		  (push (list file li) *pending-breakpoints*)
-		  (format t "~&Breakpoint at ~a line ~a deferred ~
-                             (file not yet loaded)~%" file li)
-		  (return-from break-function nil)))))
+		  (cond (file-found
+			 ;; File is loaded but no function spans this line
+			 (format t "~&No function in ~a contains line ~a~%"
+				 file li)
+			 (return-from break-function nil))
+			(t
+			 ;; File not seen in any lineinfo — defer
+			 (push (list file li) *pending-breakpoints*)
+			 (format t "~&Breakpoint at ~a line ~a deferred ~
+                                      (file not yet loaded)~%" file li)
+			 (return-from break-function nil)))))))
   (setq fun ($concat fun))
 					; (print (list 'fun fun 'hi))
   (cond ((and (setq tem (second (mgetl  fun '(mexpr mmacro))))
@@ -873,6 +879,16 @@ Command      Description~%~
 			 (lineinfo (and fun (set-full-lineinfo fun))))
 		    (and (vectorp lineinfo)
 			 (find form lineinfo :test #'eq))))))
+
+(defmfun $breakpoint_line (n)
+  "Return the absolute file line of breakpoint N, or -1 if invalid."
+  (if (and *break-points* (< n (length *break-points*)))
+      (let ((bpt (aref *break-points* n)))
+	(if bpt
+	    (let ((raw-bpt (if (null (car bpt)) (cdr bpt) bpt)))
+	      (bkpt-file-line raw-bpt))
+	    -1))
+      -1))
 
 (defmfun $clear_breakpoints ()
   "Delete all active and pending breakpoints and disable debug mode."
