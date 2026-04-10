@@ -2057,6 +2057,7 @@ wrapper for this."
 	     (add2lnc (cons (ncons fnname) args) $functions)
 	     (set-lineinfo fnname (cadar fun) body)
 	     (mputprop fnname (mdefine1 args body) 'mexpr)
+	     (resolve-pending-breakpoints fnname (cadar fun))
 	     (if $translate (translate-function fnname)))
 	    ((prog2 (add2lnc fnname $arrays)
 	       (setq ary (mgetl fnname '(hashar array)))

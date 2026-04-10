@@ -1,0 +1,128 @@
+/* Tests for Maxima's debugger: breakpoints, deferred breakpoints,
+   and line-snapping.  Uses set_breakpoint(), pending_breakpoints(),
+   and clear_breakpoints() from mdebug.lisp. */
+
+(kill(all), 0);
+0;
+
+/* === Test 1: Basic function breakpoint by name === */
+
+(f(x) := block([y],
+   y : x + 1,
+   y * 2),
+ 0);
+0;
+
+/* set_breakpoint returns >= 0 on success, -1 on failure */
+is(set_breakpoint('f, 1) >= 0);
+true;
+
+clear_breakpoints();
+done;
+
+/* === Test 2: Deferred breakpoint on nonexistent file === */
+
+/* Breakpoint on a file that isn't loaded should defer */
+is(set_breakpoint("/nonexistent/path/test.mac", 5) = -1);
+true;
+
+/* One pending breakpoint should exist */
+length(pending_breakpoints());
+1;
+
+/* Check the pending breakpoint's file and line */
+pending_breakpoints()[1][1];
+"/nonexistent/path/test.mac";
+
+pending_breakpoints()[1][2];
+5;
+
+clear_breakpoints();
+done;
+
+/* Pending list should be empty after clear */
+length(pending_breakpoints());
+0;
+
+/* === Test 3: Deferred breakpoint resolves on load === */
+
+/* Get the path that load() will use for the helper file */
+block([p : file_search("test_debugger_helper", file_search_tests)],
+  set_breakpoint(p, 4),
+  length(pending_breakpoints()));
+1;
+
+/* Loading the file should resolve the pending breakpoint */
+(load(file_search("test_debugger_helper", file_search_tests)), 0);
+0;
+
+/* Pending list should now be empty */
+length(pending_breakpoints());
+0;
+
+/* Clean up */
+(clear_breakpoints(), kill(test_debugger_func), 0);
+0;
+
+/* === Test 4: Function still works after breakpoint resolution === */
+
+(load(file_search("test_debugger_helper", file_search_tests)), 0);
+0;
+
+test_debugger_func(3);
+8;
+
+(kill(test_debugger_func), 0);
+0;
+
+/* === Test 5: clear_breakpoints resets everything === */
+
+(f(x) := x + 1, 0);
+0;
+
+(set_breakpoint('f, 1), set_breakpoint("/no/such/file.mac", 1), 0);
+0;
+
+is(length(pending_breakpoints()) > 0);
+true;
+
+clear_breakpoints();
+done;
+
+length(pending_breakpoints());
+0;
+
+/* === Test 6: Breakpoints become stale on redefinition === */
+
+/* Load a file-defined function so it has lineinfo */
+(load(file_search("test_debugger_helper", file_search_tests)), 0);
+0;
+
+/* Set a breakpoint */
+is(set_breakpoint('test_debugger_func, 1) >= 0);
+true;
+
+/* Breakpoint should be valid */
+breakpoint_count();
+1;
+
+valid_breakpoint_count();
+1;
+
+/* Reload the file — redefines the function with new form objects */
+(load(file_search("test_debugger_helper", file_search_tests)), 0);
+0;
+
+/* Breakpoint entry still exists but form is now stale */
+breakpoint_count();
+1;
+
+valid_breakpoint_count();
+0;
+
+(clear_breakpoints(), kill(test_debugger_func), 0);
+0;
+
+/* Final cleanup */
+(kill(f), 0);
+0;
