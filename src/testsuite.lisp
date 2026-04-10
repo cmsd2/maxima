@@ -136,6 +136,7 @@
         "rtest_plotoptions"
 	"rtest_algsys"
         "rtest_trace"
+        "rtest_debugger"
 	"rtest_polynomialp"
         ((mlist simp) "rtest_limit_extra" 
           ((mlist simp)  42 59 61 82 83 84 89 
