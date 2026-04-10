@@ -1,0 +1,260 @@
+Proposal: Deferred Breakpoints and Line-Snapping
+=================================================
+
+Two changes to Maxima's debugger to improve breakpoint usability,
+particularly for IDE/DAP integration.  See breakpoints.txt for
+background on the current implementation and its limitations.
+
+
+A. Deferred Breakpoints
+========================
+
+Goal: allow :break to accept a filename and line number even when
+the file has not yet been loaded.  The breakpoint is stored as
+"pending" and automatically activated when the relevant function
+is defined.
+
+Approach: hook into set-lineinfo (mlisp.lisp:1972), which is
+called every time a function is defined via mdefine.
+
+Changes:
+
+1. New global in mdebug.lisp:
+
+     (defvar *pending-breakpoints* nil)
+
+   Each entry is a list: (file line), where file is a string
+   (the filename as provided by the user) and line is a fixnum
+   (absolute line number in the file).
+
+2. Modify break-function (mdebug.lisp:494):
+
+   When given a string filename and the existing symbol scan
+   fails to find a match (the "No line info" branch at line 512),
+   instead of just printing an error, also push the request onto
+   *pending-breakpoints*:
+
+     (push (list file li) *pending-breakpoints*)
+     (format t "~&Breakpoint at ~a line ~a deferred (file not yet loaded)~%"
+             file li)
+
+   When the symbol scan succeeds, still set the breakpoint
+   immediately as before (no change to the happy path).
+
+3. New function resolve-pending-breakpoints (mdebug.lisp):
+
+     (defun resolve-pending-breakpoints (fnname body-lineinfo)
+       "Check if any pending breakpoints match the file and line
+        range of the newly defined function FNNAME."
+       (when (and *pending-breakpoints*
+                  (consp body-lineinfo)
+                  (eq 'src (third body-lineinfo)))
+         (let ((file (second body-lineinfo))
+               (start-line (first body-lineinfo)))
+           (when file
+             (setq *pending-breakpoints*
+                   (loop for bp in *pending-breakpoints*
+                         if (and (equal (first bp) file)
+                                 ;; exact resolution is left to
+                                 ;; break-function — just check
+                                 ;; if the file matches
+                                 (equal (first bp) file))
+                           do (format t "~&Resolving deferred breakpoint ~a:~a~%"
+                                      (first bp) (second bp))
+                              (break-function (first bp) (second bp) t)
+                         else
+                           collect bp))))))
+
+   Note: we call break-function with the filename and absolute
+   line, which re-enters the normal resolution path.  By the time
+   this runs the function is defined, so the symbol scan will
+   succeed.
+
+4. Hook into set-lineinfo (mlisp.lisp:1972):
+
+   After storing the lineinfo property, call the resolver:
+
+     (defun set-lineinfo (fnname lineinfo body)
+       (cond ((and (consp lineinfo) (eq 'src (third lineinfo)))
+              (setf (cdddr lineinfo) (list fnname (first lineinfo)))
+              (setf (get fnname 'lineinfo) body)
+              (resolve-pending-breakpoints fnname lineinfo))
+             (t (remprop fnname 'lineinfo))))
+
+5. Path normalization:
+
+   For deferred breakpoints to resolve reliably, we need the
+   filename stored by add-lineinfo (nparse.lisp:1801) to match
+   what the user passes to :break.  Two sub-options:
+
+   5a. Normalize at storage time: in add-lineinfo, resolve the
+       stream name to an absolute path via truename before storing
+       it in *current-line-info*.  This means all lineinfo uses
+       absolute paths.
+
+   5b. Normalize at comparison time: in break-function's filename
+       comparison (line 505) and in resolve-pending-breakpoints,
+       use truename on both sides before comparing.
+
+   Option 5a is simpler and fixes the existing file-path breakpoint
+   bug too (breakpoints.txt section 5).  Recommended.
+
+   In add-lineinfo, change:
+
+     (setq nam (instream-name st))
+
+   to:
+
+     (setq nam (or (ignore-errors (namestring (truename (instream-name st))))
+                   (instream-name st)))
+
+   This normalizes at parse time.  The ignore-errors handles cases
+   where the stream name is not a valid filesystem path (e.g.
+   string streams).
+
+6. Breakpoint re-application on redefinition:
+
+   As a bonus, the same set-lineinfo hook can handle redefinition.
+   Before calling resolve-pending-breakpoints, check if fnname
+   already has breakpoints registered:
+
+     (let ((old-bps (get fnname 'break-points)))
+       (when old-bps
+         ;; Save line offsets of existing breakpoints
+         ;; Delete old breakpoints
+         ;; Re-apply at same line offsets on new body
+         ))
+
+   This is a natural extension but can be deferred to a second
+   patch.  Marking it as future work.
+
+
+B. Line-Snapping for Non-Executable Lines
+==========================================
+
+Goal: when a breakpoint is requested on a line with no executable
+form, snap to the nearest executable line instead of failing.
+Similarly, when stepping, do not silently skip non-executable
+lines — report the nearest executable line.
+
+Approach: modify the line lookup functions to search forward (then
+backward) for the nearest non-nil lineinfo slot.
+
+Changes:
+
+1. New helper function nearest-executable-line (mdebug.lisp):
+
+     (defun nearest-executable-line (form target-line)
+       "Find the form nearest to TARGET-LINE in FORM's body.
+        Searches forward first, then backward.  Returns the form
+        and its actual line number as two values, or nil."
+       ;; First try exact match (existing behavior)
+       (let ((exact (first-form-line form target-line)))
+         (when exact (return-from nearest-executable-line
+                       (values exact target-line))))
+       ;; Search forward then backward, up to 50 lines each way
+       (loop for delta from 1 to 50
+             do (let ((fwd (first-form-line form (+ target-line delta))))
+                  (when fwd
+                    (return-from nearest-executable-line
+                      (values fwd (+ target-line delta)))))
+                (let ((bwd (first-form-line form (- target-line delta))))
+                  (when bwd
+                    (return-from nearest-executable-line
+                      (values bwd (- target-line delta))))))
+       nil)
+
+2. Modify break-function (mdebug.lisp:522-531):
+
+   Replace the call to first-form-line with
+   nearest-executable-line.  When snapping occurs, inform the
+   user:
+
+     (multiple-value-bind (found-form actual-line)
+         (nearest-executable-line <body> i)
+       (cond (found-form
+              (unless (eql actual-line i)
+                (format t "~&Line ~a has no executable code; ~
+                           snapped to line ~a~%" i actual-line))
+              (setq form found-form)
+              (setq i actual-line))
+             (t
+              (format t "~&No executable code found near line ~a ~
+                         of ~a~%" i ($sconcat fun))
+              (return-from break-function nil))))
+
+3. Stepping behavior — no change needed:
+
+   The stepping functions (break-step-into, break-step-next)
+   already stop on the next form that meval1 evaluates.  They
+   don't skip lines in a way the user can control — they just
+   stop on whatever form is evaluated next.  The "skipping"
+   behavior is inherent to the fact that non-executable lines
+   have no form to evaluate.
+
+   For IDE/DAP integration, the correct behavior is:
+   - When reporting "stopped at line N", use the lineinfo from
+     the form where execution actually stopped
+   - The IDE highlights that line, which may differ from the
+     previous stop line by more than 1
+   - This is normal and matches how other debuggers work (e.g.
+     GDB, LLDB stepping over blank lines or comments)
+
+   No change to the stepping code is proposed.  The snap-to-nearest
+   behavior is only for explicit breakpoint setting.
+
+
+C. Summary of Files Changed
+============================
+
+  src/mdebug.lisp:
+    - New variable *pending-breakpoints*
+    - New function resolve-pending-breakpoints
+    - New function nearest-executable-line
+    - Modified break-function (deferred + snap logic)
+
+  src/mlisp.lisp:
+    - Modified set-lineinfo (call resolver after definition)
+
+  src/nparse.lisp:
+    - Modified add-lineinfo (path normalization) [optional but
+      recommended]
+
+
+D. Alternatives Considered
+===========================
+
+1. Hook into batchload instead of set-lineinfo:
+
+   Resolve pending breakpoints after an entire file finishes
+   loading rather than on each function definition.  Simpler hook
+   point but less immediate — if file A loads file B (via load()
+   inside A), breakpoints in B wouldn't resolve until A finishes.
+   Rejected in favor of per-definition resolution.
+
+2. Synthetic marker forms for non-executable lines:
+
+   Inject no-op forms into the parsed tree at lines with no
+   executable content, so every line is steppable.  This would
+   give true line-by-line stepping but is highly invasive: it
+   changes the parser output, inflates expression trees, and
+   could interfere with simplification and display.  Rejected
+   as too risky for the benefit.
+
+3. Source-file-based stepping (track file:line instead of form
+   identity):
+
+   Decouple stepping from form identity entirely and track
+   the current (file, line) pair.  Stop whenever it changes.
+   This would be a major architectural change to meval1 and
+   the break loop.  Could be considered for a future rewrite
+   but is out of scope here.
+
+4. Pre-parse files for deferred breakpoints:
+
+   When :break "file" N is called and file is not loaded, parse
+   it to extract lineinfo.  But the parsed forms would be
+   different objects than the forms produced by the real load,
+   so breakpoints couldn't transfer (they match by eq identity).
+   Still requires a deferred mechanism.  Adds complexity with
+   no real benefit over simply deferring.

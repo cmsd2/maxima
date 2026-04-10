@@ -1,0 +1,297 @@
+Breakpoint Internals and Limitations
+=====================================
+
+Notes on how Maxima's breakpoint system works, its limitations, and
+what would be needed for IDE/DAP integration.  Based on reading
+src/mdebug.lisp and mailing list discussions (2014-2025).
+
+This file documents the current state — no source changes proposed.
+
+
+1. How break-function works (src/mdebug.lisp line 494)
+------------------------------------------------------
+
+break-function takes a function name (symbol) or filename (string)
+and an optional line offset.
+
+When given a symbol:
+
+  1. Looks up the function via (mgetl fun '(mexpr mmacro))
+  2. Gets line info from the function's parsed form via get-lineinfo
+  3. Checks that info source is 'src (i.e. loaded from a file, not
+     entered interactively)
+  4. Computes the target line: fun-line + li (offset from function start),
+     or li directly if 'absolute' flag is set
+  5. Walks the parsed form tree to find the subform at that line
+     via first-form-line
+  6. Creates a bkpt struct and inserts it into *break-point-vector*
+
+When given a string (filename):
+
+  1. Iterates over ALL symbols in the 'maxima package
+  2. For each symbol with line info, checks if its source file matches
+  3. Checks if the requested line falls within the function's range
+  4. If found, converts to function+offset and recurses
+  5. If not found: "No line info for ~a"
+
+This is why file-path breakpoints are unreliable — the linear scan
+over all maxima symbols is fragile and depends on exact filename
+matching (relative vs absolute paths, symlinks, etc.).
+
+
+2. No deferred/pending breakpoints
+-----------------------------------
+
+If the function is not yet defined when :break is called,
+(mgetl fun '(mexpr mmacro)) returns nil, and break-function prints
+"No line info for ~a" and returns nil.
+
+There is no mechanism to:
+  - Queue a breakpoint for a function that will be defined later
+  - Automatically set breakpoints after a file is loaded
+  - Re-apply breakpoints after a function is redefined
+
+The comment at line 541 confirms this was a known gap:
+
+  ;; note  need to make the redefine function, fixup the break point list..
+
+This TODO was never implemented.
+
+
+3. Breakpoints are fragile across redefinition
+----------------------------------------------
+
+Breakpoints reference the actual parsed form objects in memory.
+When a function is redefined (e.g. by reloading the file), the old
+forms are replaced with new ones, so existing breakpoints silently
+stop working — they still exist in *break-point-vector* but the
+forms they reference are orphaned.
+
+There is no hook in the function definition path (mdefine, etc.)
+that notifies the breakpoint system of redefinition.
+
+
+4. Mailing list evidence
+------------------------
+
+2016-02-20 (sf_id 34869055): "Setting breakpoints" thread.
+  Kris Katterjohn confirms function-name breakpoints work but
+  acknowledges "many improvements can still be made to Maxima's
+  debugger."  Michel Talon reports breakpoints in charsets package
+  "are registered for sure, but never obeyed."
+
+2016-02-21 (sf_id 34869425): Follow-up.
+  Kris notes that errcatch suppresses breakpoints — "The errcatch
+  inhibits the breakpoint."
+
+2022-02-16 (sf_id 37611853): "About the debugger" by Michel Talon.
+  Detailed report on SBCL 2.0.1:
+  - :br foo works, :br foo 2 works
+  - Documents SBCL-specific (trace 'func :break t) as workaround
+  - Notes GCL debugger is essentially non-functional
+
+2025-04-22 (sf_id 59175702): "Breakpoints in maxima" by Martin M.
+  Author is building a VS Code debug adapter. Reports:
+  1. :break f — works
+  2. :break "test.wxm" — no line info available
+  3. :break "/full/path/test.wxm" 5 — registered but never fires
+
+2025-04-22 (sf_id 59175740): Reply by Michel Talon.
+  Confirms :br foo 2 (function + offset) works.
+  Confirms file-path variant does not work in the manual's
+  documented way.
+
+2025-07-21 (sf_id 59209249): "Debugging maxima" thread.
+  Michel Talon and Robert Dodier both recommend SBCL over GCL.
+  Robert describes a "clumsy workaround" for setting breakpoints.
+  Michel recommends SBCL's native (trace ... :break t) facility.
+
+No discussion of deferred/pending breakpoints was found in the
+archive (~38k messages, 2014-2026).
+
+
+5. What the file-path breakpoint scan actually does
+---------------------------------------------------
+
+The file-path code path (mdebug.lisp lines 499-513) does:
+
+  (loop named joe for vv being the symbols of 'maxima
+        with tem with linfo
+        when (and (typep (setq tem (set-full-lineinfo vv)) 'vector)
+                  (setq linfo (get-lineinfo (aref tem 1)))
+                  (equal file (cadr linfo))
+                  (fb >= li (setq start (aref tem 0)))
+                  (fb <= li (+ start (length (the vector tem)))))
+        do (setq fun vv li (f- li start -1))
+           (return-from joe nil)
+        finally
+           (format t "No line info for ~a " fun)
+           (return-from break-function nil))
+
+Problems:
+  - Uses (equal file ...) for filename comparison — no path
+    normalization, no case folding, no symlink resolution
+  - The file string in line info depends on how the file was loaded
+    (relative path passed to load/batchload is stored as-is)
+  - If the user loads "../foo.mac" but sets :break "/full/path/foo.mac",
+    the equal test fails
+  - No error message distinguishes "file not found in any function's
+    line info" from "file found but line out of range"
+
+
+6. Implications for IDE/DAP integration
+----------------------------------------
+
+A DAP server wrapping Maxima's debugger needs to handle:
+
+a) Deferred breakpoints (not supported by Maxima):
+   - Store requested file:line breakpoints in a pending list
+   - After each load/batchload, attempt to resolve them
+   - Report as DAP Breakpoint { verified: false } until resolved
+   - After load, resolve and send :break commands, then update
+     to { verified: true }
+
+b) Breakpoint invalidation on reload:
+   - Detect when a file is reloaded (load/batchload of same path)
+   - Delete old breakpoints (:delete)
+   - Re-set breakpoints from the stored list
+   - Notify DAP client via breakpoint events
+
+c) File-path normalization:
+   - Always use the exact same path string that was passed to
+     load/batchload when setting file-path breakpoints
+   - Or better: avoid file-path breakpoints entirely and always
+     use function-name + offset (requires parsing the .mac file
+     to map line numbers to containing functions)
+
+d) The function-name + offset approach:
+   - Parse the .mac file to extract function definitions and their
+     line ranges
+   - When user sets breakpoint at file:line N, find the enclosing
+     function and compute offset = N - function_start_line
+   - Send :break funcname offset
+   - This is reliable and avoids all file-path matching issues
+   - Limitation: cannot set breakpoints in top-level code outside
+     any function definition
+
+
+7. Non-executable lines and the lineinfo gap
+---------------------------------------------
+
+The lineinfo vector built by set-full-lineinfo (mdebug.lisp:189)
+stores one form per source line.  walk-get-lineinfo walks the
+parsed body tree and records the first form encountered for each
+line number.  Lines that do not produce an evaluable form get nil
+in the vector (lines 216-217 explicitly fill gaps with nil):
+
+  (loop for j from (fill-pointer ar) below i
+     do (setf (aref ar j) nil))
+
+Lines that produce nil entries include:
+  - Blank lines
+  - Comment-only lines
+  - Lines containing only closing parens/brackets — e.g. the
+    final ")" of a block() or the ")" closing a function body
+  - The "else" keyword when it appears on its own line in an
+    if/then/else construct
+  - Lines with only syntax like "then", commas, or semicolons
+
+Consequences:
+
+a) Breakpoints on nil-slot lines:
+   first-form-line (mdebug.lisp:224) walks the body looking for
+   a form whose lineinfo matches the requested line.  If no form
+   has that line number, it returns nil and break-function prints
+   "No instructions recorded for this line".  There is no fallback
+   to the nearest executable line.
+
+   Special case: if li=0 and no form found, break-function retries
+   with li=1 (line 527-528).  This is the only "snap" behavior.
+
+b) Stepping over nil-slot lines:
+   break-step-into (line 171) calls maybe-break, which does
+   (position form line-info).  The stepper only stops when the
+   current form appears in the lineinfo vector.  Forms on nil-slot
+   lines are never in the vector, so the stepper skips them
+   entirely — there is no visual indication that execution passed
+   through those source lines.
+
+c) Impact on IDE integration:
+   A DAP server that reports "stopped at line N" will appear to
+   jump over non-executable lines during stepping, which is
+   confusing when the user is looking at the source file.  There
+   is no way to request "stop at the nearest executable line to N"
+   from the debugger protocol.
+
+
+8. How meval1 checks breakpoints (mlisp.lisp:282-295)
+-----------------------------------------------------
+
+The breakpoint/stepping check is embedded in meval1's main
+dispatch as a cond clause:
+
+  ((and *mdebug*
+        (progn
+          (when (and *break-points*
+                     (or (null *break-step*)
+                         (null (funcall *break-step* form))))
+            (let ((ar *break-points*))
+              (declare (type (vector t) ar))
+              (loop for i below (fill-pointer ar)
+                    when (eq (car (aref ar i)) form)
+                    do (*break-points* form)
+                    (loop-finish))))
+          nil)))
+
+Key details:
+  - Breakpoints match by (eq (car (aref ar i)) form) — object
+    identity, not structural equality.  This is why breakpoints
+    break on redefinition (new forms are different objects).
+  - The clause always returns nil (the progn ends with nil), so
+    it never short-circuits the rest of meval1.  It's purely a
+    side-effect check.
+  - *break-step* is funcall'd with the current form.  If the
+    step function returns nil, it means "stop here" — the inner
+    loop then checks for matching breakpoints.
+  - Only compound forms (conses) reach this code.  Atoms are
+    dispatched earlier in meval1 and never hit the breakpoint
+    check.
+
+
+9. Possible Maxima improvements (not proposed, just noted)
+----------------------------------------------------------
+
+If someone wanted to improve the debugger in Maxima itself:
+
+a) Deferred breakpoints:
+   - Add a *pending-breakpoints* list
+   - Hook into mdefine / mdefmacro to check if a newly defined
+     function matches any pending breakpoint
+   - Apply the breakpoint and remove from pending list
+
+b) Redefinition resilience:
+   - Hook into mdefine to check *break-point-vector* for breakpoints
+     on the function being redefined
+   - Re-apply them to the new form at the same line offset
+
+c) Path normalization for file breakpoints:
+   - Resolve to absolute path via truename/probe-file before
+     comparison
+   - Store normalized paths in line info at load time
+
+d) Structured breakpoint protocol:
+   - Instead of printing "Bkpt N for foo (in file line M)",
+     emit a machine-readable form that a DAP server can parse
+     reliably
+
+e) Snap-to-nearest for non-executable lines:
+   - Modify first-form-line (or add a wrapper) to search forward
+     then backward for the nearest line with a non-nil entry
+   - Similarly modify stepping to report the nearest steppable
+     line rather than silently skipping
+
+f) Source-line display at break:
+   - When stopped at a breakpoint, read the actual source file
+     and display surrounding lines for context
+   - Would require storing the source file path (already in
+     lineinfo) and verifying the file is still accessible
