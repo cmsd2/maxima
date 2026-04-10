@@ -1,0 +1,6 @@
+/* test_debugger_helper.mac — loaded by rtest_debugger.mac */
+/* Line 2: function definition starts here */
+test_debugger_func(x) := block([y],
+  y : x + 1,
+  y * 2
+);

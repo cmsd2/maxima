@@ -137,9 +137,33 @@
 (defvar *break-points* nil)
 (defvar *break-point-vector* (make-array 10 :fill-pointer 0 :adjustable t))
 
+(defvar *pending-breakpoints* nil
+  "List of (file line) pairs for breakpoints requested before the target file was loaded.")
+
 (defun init-break-points ()
   (setf (fill-pointer *break-point-vector*) 0)
   (setf *break-points* *break-point-vector*))
+
+(defun resolve-pending-breakpoints (fnname lineinfo)
+  "After a function is defined, check if any pending breakpoints
+   match its source file.  If so, attempt to set them."
+  (declare (ignore fnname))
+  (when (and *pending-breakpoints*
+	     (consp lineinfo)
+	     (eq 'src (third lineinfo)))
+    (let ((file (second lineinfo)))
+      (when file
+	(let ((remaining nil))
+	  (dolist (bp *pending-breakpoints*)
+	    (if (equal (first bp) file)
+		(progn
+		  (format t "~&Resolving deferred breakpoint ~a:~a~%"
+			  (first bp) (second bp))
+		  (unless (break-function (first bp) (second bp) t)
+		    ;; Still couldn't resolve — keep it pending
+		    (push bp remaining)))
+		(push bp remaining)))
+	  (setq *pending-breakpoints* (nreverse remaining)))))))
 
 (defvar *break-step* nil)
 (defvar *step-next* nil)
@@ -228,6 +252,24 @@
 	(t (loop for v in (cdr form)
 		  when (setq tem (first-form-line v line))
 		  do (return-from first-form-line tem)))))
+
+(defun nearest-executable-line (form target-line)
+  "Find the form nearest to TARGET-LINE.  Tries exact match first,
+   then searches forward and backward up to 50 lines."
+  (let ((exact (first-form-line form target-line)))
+    (when exact
+      (return-from nearest-executable-line
+	(values exact target-line))))
+  (loop for delta from 1 to 50
+	do (let ((fwd (first-form-line form (+ target-line delta))))
+	     (when fwd
+	       (return-from nearest-executable-line
+		 (values fwd (+ target-line delta)))))
+	   (let ((bwd (first-form-line form (- target-line delta))))
+	     (when bwd
+	       (return-from nearest-executable-line
+		 (values bwd (- target-line delta))))))
+  nil)
 
 (defvar *last-dbm-command* nil)
 
@@ -523,7 +565,9 @@ Command      Description~%~
 				; (print (list 'found fun fun li  (aref tem 0)))
 		  (return-from joe nil)
 		  finally
-		  (format t "No line info for ~a " fun)
+		  (push (list file li) *pending-breakpoints*)
+		  (format t "~&Breakpoint at ~a line ~a deferred ~
+                             (file not yet loaded)~%" file li)
 		  (return-from break-function nil)))))
   (setq fun ($concat fun))
 					; (print (list 'fun fun 'hi))
@@ -533,16 +577,19 @@ Command      Description~%~
 	 (setq fun-line (fifth info))
 	 (or (fixnump fun-line) (setq fun-line (line-info-line info)))
 					; (print (list 'fun-line fun-line))
-	 (setq form (first-form-line
-		     form
-		     (setq i (+
-			      (if absolute 0 fun-line) li))))
-	 (unless form
-	   (if (eql li 0)
-	       (return-from break-function (break-function fun 1)))
-           (format t "~& No instructions recorded for this line ~a of ~a" li
-		   ($sconcat fun))
-	   (return-from break-function nil))
+	 (setq i (+ (if absolute 0 fun-line) li))
+	 (multiple-value-bind (found-form actual-line)
+	     (nearest-executable-line form i)
+	   (cond (found-form
+		  (unless (eql actual-line i)
+		    (format t "~&Line ~a has no executable code; ~
+                               adjusted to line ~a~%" i actual-line))
+		  (setq form found-form)
+		  (setq i actual-line))
+		 (t
+		  (format t "~&No executable code found near line ~a ~
+                             of ~a~%" i ($sconcat fun))
+		  (return-from break-function nil))))
 	 (let ((n (insert-break-point    (make-bkpt :form form
 						    :file-line i
 						    :file (line-info-file info)
@@ -672,6 +719,17 @@ Command      Description~%~
   "Delete all breakpoints, or if arguments are supplied delete the
              specified breakpoints")
 
+(def-break :pending
+    #'(lambda ()
+	(if *pending-breakpoints*
+	    (loop for bp in *pending-breakpoints*
+		  for i from 0
+		  do (format t "~&Pending ~a: ~a line ~a~%"
+			     i (first bp) (second bp)))
+	    (format t "~&No pending breakpoints~%"))
+	(values))
+  "Show breakpoints waiting for files to be loaded")
+
 (def-break :frame 'break-frame
   "With an argument print the selected stack frame.
              Otherwise the current frame.")
@@ -748,3 +806,54 @@ Command      Description~%~
       (fresh-line *debug-io*)
       (format *debug-io* "~a:~a::~%" (cadr lineinfo) (+ 0 (car lineinfo))))
     (values)))
+
+;;; Maxima-callable wrappers for programmatic breakpoint management.
+;;; Useful for IDE/DAP integration and testing.
+
+(defmfun $set_breakpoint (fun &optional (li 0))
+  "Set a breakpoint.  FUN is a function name (quoted) or filename
+   string.  LI is line offset from function start, or absolute line
+   number if FUN is a string.  Returns breakpoint index on success,
+   or -1 on failure (breakpoint deferred or not found)."
+  (let ((result (break-function fun li (stringp fun))))
+    (if result result -1)))
+
+(defmfun $pending_breakpoints ()
+  "Return the list of pending (deferred) breakpoints as a Maxima
+   list of [file, line] pairs."
+  (cons '(mlist)
+	(mapcar (lambda (bp)
+		  (list '(mlist) (first bp) (second bp)))
+		*pending-breakpoints*)))
+
+(defmfun $breakpoint_count ()
+  "Return the number of active (non-nil) breakpoints."
+  (if *break-points*
+      (count-if #'identity *break-points*)
+      0))
+
+(defmfun $valid_breakpoint_count ()
+  "Return the number of breakpoints whose form still appears in
+   the current function body's lineinfo vector.  A breakpoint
+   becomes invalid (stale) when its function is redefined, because
+   the new body contains different form objects."
+  (if (null *break-points*)
+      0
+      (loop for i below (fill-pointer *break-points*)
+	    for bpt = (aref *break-points* i)
+	    when bpt
+	    count (let* ((raw-bpt (if (null (car bpt)) (cdr bpt) bpt))
+			 (form (bkpt-form raw-bpt))
+			 (fun (bkpt-function raw-bpt))
+			 (lineinfo (and fun (set-full-lineinfo fun))))
+		    (and (vectorp lineinfo)
+			 (find form lineinfo :test #'eq))))))
+
+(defmfun $clear_breakpoints ()
+  "Delete all active and pending breakpoints and disable debug mode."
+  (when *break-points*
+    (iterate-over-bkpts nil :delete))
+  (setq *break-points* nil)
+  (setq *pending-breakpoints* nil)
+  (setq *mdebug* nil)
+  '$done)

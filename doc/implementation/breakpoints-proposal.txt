@@ -5,6 +5,9 @@ Two changes to Maxima's debugger to improve breakpoint usability,
 particularly for IDE/DAP integration.  See breakpoints.txt for
 background on the current implementation and its limitations.
 
+Status: IMPLEMENTED.  See git log for the deferred-breakpoints
+branch.  Tests in tests/rtest_debugger.mac (23 tests, all passing).
+
 
 A. Deferred Breakpoints
 ========================
@@ -14,8 +17,10 @@ the file has not yet been loaded.  The breakpoint is stored as
 "pending" and automatically activated when the relevant function
 is defined.
 
-Approach: hook into set-lineinfo (mlisp.lisp:1972), which is
-called every time a function is defined via mdefine.
+Approach: hook into mdefine (mlisp.lisp), called every time a
+function is defined.  The hook must run AFTER mputprop stores the
+mexpr property, because break-function needs (mgetl fun '(mexpr
+mmacro)) to succeed when resolving.
 
 Changes:
 
@@ -27,106 +32,52 @@ Changes:
    (the filename as provided by the user) and line is a fixnum
    (absolute line number in the file).
 
-2. Modify break-function (mdebug.lisp:494):
+2. Modified break-function (mdebug.lisp):
 
    When given a string filename and the existing symbol scan
-   fails to find a match (the "No line info" branch at line 512),
-   instead of just printing an error, also push the request onto
-   *pending-breakpoints*:
+   fails to find a match, instead of just printing an error,
+   push the request onto *pending-breakpoints*:
 
      (push (list file li) *pending-breakpoints*)
-     (format t "~&Breakpoint at ~a line ~a deferred (file not yet loaded)~%"
-             file li)
+     (format t "~&Breakpoint at ~a line ~a deferred ~
+                (file not yet loaded)~%" file li)
 
    When the symbol scan succeeds, still set the breakpoint
    immediately as before (no change to the happy path).
 
 3. New function resolve-pending-breakpoints (mdebug.lisp):
 
-     (defun resolve-pending-breakpoints (fnname body-lineinfo)
-       "Check if any pending breakpoints match the file and line
-        range of the newly defined function FNNAME."
-       (when (and *pending-breakpoints*
-                  (consp body-lineinfo)
-                  (eq 'src (third body-lineinfo)))
-         (let ((file (second body-lineinfo))
-               (start-line (first body-lineinfo)))
-           (when file
-             (setq *pending-breakpoints*
-                   (loop for bp in *pending-breakpoints*
-                         if (and (equal (first bp) file)
-                                 ;; exact resolution is left to
-                                 ;; break-function — just check
-                                 ;; if the file matches
-                                 (equal (first bp) file))
-                           do (format t "~&Resolving deferred breakpoint ~a:~a~%"
-                                      (first bp) (second bp))
-                              (break-function (first bp) (second bp) t)
-                         else
-                           collect bp))))))
+   Called after each function definition.  Scans
+   *pending-breakpoints* for entries whose filename matches
+   the newly-defined function's source file.  For each match,
+   calls break-function with the filename and absolute line to
+   re-enter the normal resolution path (which now succeeds
+   because the function is defined).  Unresolved entries are
+   kept in the pending list.
 
-   Note: we call break-function with the filename and absolute
-   line, which re-enters the normal resolution path.  By the time
-   this runs the function is defined, so the symbol scan will
-   succeed.
+4. Hook location in mdefine (mlisp.lisp):
 
-4. Hook into set-lineinfo (mlisp.lisp:1972):
+   resolve-pending-breakpoints is called after mputprop stores
+   the mexpr (break-function needs the mexpr to exist):
 
-   After storing the lineinfo property, call the resolver:
+     (set-lineinfo fnname (cadar fun) body)
+     (mputprop fnname (mdefine1 args body) 'mexpr)
+     (resolve-pending-breakpoints fnname (cadar fun))
 
-     (defun set-lineinfo (fnname lineinfo body)
-       (cond ((and (consp lineinfo) (eq 'src (third lineinfo)))
-              (setf (cdddr lineinfo) (list fnname (first lineinfo)))
-              (setf (get fnname 'lineinfo) body)
-              (resolve-pending-breakpoints fnname lineinfo))
-             (t (remprop fnname 'lineinfo))))
+5. New :pending debugger command:
 
-5. Path normalization:
+   Shows all pending breakpoints that haven't yet been resolved.
 
-   For deferred breakpoints to resolve reliably, we need the
-   filename stored by add-lineinfo (nparse.lisp:1801) to match
-   what the user passes to :break.  Two sub-options:
+6. Maxima-callable wrappers:
 
-   5a. Normalize at storage time: in add-lineinfo, resolve the
-       stream name to an absolute path via truename before storing
-       it in *current-line-info*.  This means all lineinfo uses
-       absolute paths.
+   Five new functions exposed to Maxima for programmatic
+   breakpoint management (useful for IDE integration and testing):
 
-   5b. Normalize at comparison time: in break-function's filename
-       comparison (line 505) and in resolve-pending-breakpoints,
-       use truename on both sides before comparing.
-
-   Option 5a is simpler and fixes the existing file-path breakpoint
-   bug too (breakpoints.txt section 5).  Recommended.
-
-   In add-lineinfo, change:
-
-     (setq nam (instream-name st))
-
-   to:
-
-     (setq nam (or (ignore-errors (namestring (truename (instream-name st))))
-                   (instream-name st)))
-
-   This normalizes at parse time.  The ignore-errors handles cases
-   where the stream name is not a valid filesystem path (e.g.
-   string streams).
-
-6. Breakpoint re-application on redefinition:
-
-   As a bonus, the same set-lineinfo hook can handle redefinition.
-   Before calling resolve-pending-breakpoints, check if fnname
-   already has breakpoints registered:
-
-     (let ((old-bps (get fnname 'break-points)))
-       (when old-bps
-         ;; Save line offsets of existing breakpoints
-         ;; Delete old breakpoints
-         ;; Re-apply at same line offsets on new body
-         ))
-
-   This is a natural extension but can be deferred to a second
-   patch.  Marking it as future work.
+     set_breakpoint(fun, li)      - set or defer a breakpoint
+     pending_breakpoints()        - return pending list as Maxima list
+     breakpoint_count()           - number of active breakpoint entries
+     valid_breakpoint_count()     - number of non-stale breakpoints
+     clear_breakpoints()          - delete all active and pending breakpoints
 
 
 B. Line-Snapping for Non-Executable Lines
@@ -134,74 +85,35 @@ B. Line-Snapping for Non-Executable Lines
 
 Goal: when a breakpoint is requested on a line with no executable
 form, snap to the nearest executable line instead of failing.
-Similarly, when stepping, do not silently skip non-executable
-lines — report the nearest executable line.
 
-Approach: modify the line lookup functions to search forward (then
-backward) for the nearest non-nil lineinfo slot.
+Approach: new function nearest-executable-line that wraps
+first-form-line with bidirectional search.
 
 Changes:
 
-1. New helper function nearest-executable-line (mdebug.lisp):
+1. New function nearest-executable-line (mdebug.lisp):
 
-     (defun nearest-executable-line (form target-line)
-       "Find the form nearest to TARGET-LINE in FORM's body.
-        Searches forward first, then backward.  Returns the form
-        and its actual line number as two values, or nil."
-       ;; First try exact match (existing behavior)
-       (let ((exact (first-form-line form target-line)))
-         (when exact (return-from nearest-executable-line
-                       (values exact target-line))))
-       ;; Search forward then backward, up to 50 lines each way
-       (loop for delta from 1 to 50
-             do (let ((fwd (first-form-line form (+ target-line delta))))
-                  (when fwd
-                    (return-from nearest-executable-line
-                      (values fwd (+ target-line delta)))))
-                (let ((bwd (first-form-line form (- target-line delta))))
-                  (when bwd
-                    (return-from nearest-executable-line
-                      (values bwd (- target-line delta))))))
-       nil)
+   Tries an exact match via first-form-line first.  If no form
+   exists on the target line, searches forward and backward
+   alternately, up to 50 lines each way.  Returns two values:
+   the form and its actual line number, or nil.
 
-2. Modify break-function (mdebug.lisp:522-531):
+2. Modified break-function (mdebug.lisp):
 
-   Replace the call to first-form-line with
-   nearest-executable-line.  When snapping occurs, inform the
-   user:
+   Replaced the direct call to first-form-line (and the old
+   li=0 retry hack) with nearest-executable-line.  When
+   snapping occurs, prints an informational message:
 
-     (multiple-value-bind (found-form actual-line)
-         (nearest-executable-line <body> i)
-       (cond (found-form
-              (unless (eql actual-line i)
-                (format t "~&Line ~a has no executable code; ~
-                           snapped to line ~a~%" i actual-line))
-              (setq form found-form)
-              (setq i actual-line))
-             (t
-              (format t "~&No executable code found near line ~a ~
-                         of ~a~%" i ($sconcat fun))
-              (return-from break-function nil))))
+     "Line N has no executable code; adjusted to line M"
 
-3. Stepping behavior — no change needed:
+3. Stepping behavior — no change:
 
    The stepping functions (break-step-into, break-step-next)
-   already stop on the next form that meval1 evaluates.  They
-   don't skip lines in a way the user can control — they just
-   stop on whatever form is evaluated next.  The "skipping"
-   behavior is inherent to the fact that non-executable lines
-   have no form to evaluate.
-
-   For IDE/DAP integration, the correct behavior is:
-   - When reporting "stopped at line N", use the lineinfo from
-     the form where execution actually stopped
-   - The IDE highlights that line, which may differ from the
-     previous stop line by more than 1
-   - This is normal and matches how other debuggers work (e.g.
-     GDB, LLDB stepping over blank lines or comments)
-
-   No change to the stepping code is proposed.  The snap-to-nearest
-   behavior is only for explicit breakpoint setting.
+   already stop on the next form that meval1 evaluates.  The
+   "skipping" of non-executable lines is inherent to the
+   evaluation model, not a bug.  For IDE/DAP integration, the
+   debugger should report the lineinfo of the form where
+   execution actually stopped.
 
 
 C. Summary of Files Changed
@@ -212,27 +124,81 @@ C. Summary of Files Changed
     - New function resolve-pending-breakpoints
     - New function nearest-executable-line
     - Modified break-function (deferred + snap logic)
+    - New :pending debugger command
+    - New Maxima functions: set_breakpoint, pending_breakpoints,
+      clear_breakpoints, breakpoint_count, valid_breakpoint_count
 
   src/mlisp.lisp:
-    - Modified set-lineinfo (call resolver after definition)
+    - Added resolve-pending-breakpoints call in mdefine,
+      after mputprop stores the mexpr
 
-  src/nparse.lisp:
-    - Modified add-lineinfo (path normalization) [optional but
-      recommended]
+  src/testsuite.lisp:
+    - Registered rtest_debugger
+
+  tests/rtest_debugger.mac:
+    - 31 tests covering basic breakpoints, deferred breakpoints,
+      resolution on load, redefinition staleness, and cleanup
+
+  tests/test_debugger_helper.mac:
+    - Helper file loaded by the test to exercise deferred
+      breakpoint resolution
 
 
-D. Alternatives Considered
+D. Not Implemented (future work)
+=================================
+
+1. Path normalization:
+
+   The equal filename comparison in break-function and
+   resolve-pending-breakpoints is not normalized.  If the user
+   passes a different path form than what the loader stores
+   (e.g. relative vs absolute, symlinks), matching fails.
+
+   Fix: normalize via truename in add-lineinfo (nparse.lisp)
+   at parse time.  This would also fix the existing file-path
+   breakpoint bug documented in breakpoints.txt section 5.
+
+2. Macro debugging:
+
+   mdefmacro does not call set-lineinfo or the resolver, so
+   deferred breakpoints won't resolve for macros.
+
+3. Breakpoint re-application on redefinition:
+
+   When a function is redefined, existing breakpoints become
+   stale — they still exist in *break-points* but reference
+   old form objects that will never match in meval1.  This is
+   verified by rtest_debugger.mac test 6 (breakpoint_count()
+   stays 1 but valid_breakpoint_count() drops to 0).
+
+   The mdefine hook point (where resolve-pending-breakpoints
+   is called) is a natural place to add re-application logic:
+   before resolving pending breakpoints, check if the function
+   already has active breakpoints, save their line offsets,
+   delete the stale breakpoints, and re-apply at the same
+   offsets on the new body.  Not yet implemented.
+
+
+E. Alternatives Considered
 ===========================
 
-1. Hook into batchload instead of set-lineinfo:
+1. Hook into set-lineinfo instead of mdefine:
+
+   The initial implementation hooked into set-lineinfo
+   (mlisp.lisp:1972).  This failed because set-lineinfo runs
+   BEFORE mputprop stores the mexpr property, so break-function
+   couldn't find the function definition.  Fixed by moving the
+   hook to after mputprop in mdefine.
+
+2. Hook into batchload instead of mdefine:
 
    Resolve pending breakpoints after an entire file finishes
-   loading rather than on each function definition.  Simpler hook
-   point but less immediate — if file A loads file B (via load()
-   inside A), breakpoints in B wouldn't resolve until A finishes.
-   Rejected in favor of per-definition resolution.
+   loading.  Simpler hook point but less immediate — if file A
+   loads file B (via load() inside A), breakpoints in B wouldn't
+   resolve until A finishes.  Rejected in favor of per-definition
+   resolution.
 
-2. Synthetic marker forms for non-executable lines:
+3. Synthetic marker forms for non-executable lines:
 
    Inject no-op forms into the parsed tree at lines with no
    executable content, so every line is steppable.  This would
@@ -241,7 +207,7 @@ D. Alternatives Considered
    could interfere with simplification and display.  Rejected
    as too risky for the benefit.
 
-3. Source-file-based stepping (track file:line instead of form
+4. Source-file-based stepping (track file:line instead of form
    identity):
 
    Decouple stepping from form identity entirely and track
@@ -250,7 +216,7 @@ D. Alternatives Considered
    the break loop.  Could be considered for a future rewrite
    but is out of scope here.
 
-4. Pre-parse files for deferred breakpoints:
+5. Pre-parse files for deferred breakpoints:
 
    When :break "file" N is called and file is not loaded, parse
    it to extract lineinfo.  But the parsed forms would be
