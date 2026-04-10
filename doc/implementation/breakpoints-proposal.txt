@@ -7,7 +7,7 @@ particularly for IDE/DAP integration.  See breakpoints.txt for
 background on the current implementation and its limitations.
 
 Status: IMPLEMENTED.  See git log for the deferred-breakpoints
-branch.  Tests in tests/rtest_debugger.mac (34 tests, all passing).
+branch.  Tests in tests/rtest_debugger.mac (59 tests, all passing).
 
 
 A. Deferred Breakpoints
@@ -35,13 +35,20 @@ Changes:
 
 2. Modified break-function (mdebug.lisp):
 
-   When given a string filename and the existing symbol scan
-   fails to find a match, instead of just printing an error,
-   push the request onto *pending-breakpoints*:
+   The file-path symbol scan now tracks whether the file
+   appeared in any function's lineinfo.  This distinguishes
+   two failure cases:
 
-     (push (list file li) *pending-breakpoints*)
-     (format t "~&Breakpoint at ~a line ~a deferred ~
-                (file not yet loaded)~%" file li)
+   a) File not in any lineinfo (genuinely not loaded):
+      defer the breakpoint onto *pending-breakpoints*:
+
+        "Breakpoint at FILE line N deferred (file not yet loaded)"
+
+   b) File is loaded but no function spans the requested line
+      (e.g. a comment before the first function definition):
+      fail immediately without deferring:
+
+        "No function in FILE contains line N"
 
    When the symbol scan succeeds, still set the breakpoint
    immediately as before (no change to the happy path).
@@ -72,14 +79,25 @@ Changes:
 
 6. Maxima-callable wrappers:
 
-   Five new functions exposed to Maxima for programmatic
+   Six new functions exposed to Maxima for programmatic
    breakpoint management (useful for IDE integration and testing):
 
      set_breakpoint(fun, li)      - set or defer a breakpoint
+     breakpoint_line(n)           - absolute file line of breakpoint n
      pending_breakpoints()        - return pending list as Maxima list
      breakpoint_count()           - number of active breakpoint entries
      valid_breakpoint_count()     - number of non-stale breakpoints
      clear_breakpoints()          - delete all active and pending breakpoints
+
+7. Fixed file-path to relative-offset conversion:
+
+   The original code converted an absolute line number to a
+   relative offset with (f- li start -1), which produced
+   li - start + 1.  This was off by one: a breakpoint at
+   file line 4 in a function starting at line 3 would land
+   on line 5 instead.  Fixed by keeping li as the absolute
+   line and setting absolute to t, so the later code uses
+   the line number directly.
 
 
 B. Line-Snapping for Non-Executable Lines
@@ -209,10 +227,13 @@ E. Summary of Files Changed
     - New function resolve-pending-breakpoints (with path normalization)
     - New function reapply-breakpoints-for-function
     - New function nearest-executable-line
-    - Modified break-function (deferred + snap + path normalization)
+    - Modified break-function (deferred + snap + path normalization
+      + file-loaded vs line-outside-function error distinction
+      + file-path off-by-one fix)
     - New :pending debugger command
-    - New Maxima functions: set_breakpoint, pending_breakpoints,
-      clear_breakpoints, breakpoint_count, valid_breakpoint_count
+    - New Maxima functions: set_breakpoint, breakpoint_line,
+      pending_breakpoints, clear_breakpoints, breakpoint_count,
+      valid_breakpoint_count
 
   src/mlisp.lisp:
     - Added reapply-breakpoints-for-function and
@@ -227,9 +248,13 @@ E. Summary of Files Changed
     - Registered rtest_debugger
 
   tests/rtest_debugger.mac:
-    - 34 tests covering basic breakpoints, deferred breakpoints,
-      resolution on load, breakpoint re-application on
-      redefinition, path normalization, and cleanup
+    - 59 tests covering function-name breakpoints (with line
+      verification), file-path breakpoints (with line
+      verification), function-name/file-path agreement,
+      line-snapping, deferred breakpoints, resolution on load,
+      breakpoint re-application on redefinition, path
+      normalization, clear_breakpoints, and file-loaded vs
+      line-outside-function error handling
 
   tests/test_debugger_helper.mac:
     - Helper file loaded by the test to exercise deferred
@@ -239,7 +264,18 @@ E. Summary of Files Changed
 F. Not Implemented (future work)
 =================================
 
-1. Macro debugging:
+1. Breakpoints on arithmetic forms:
+
+   meval1 (mlisp.lisp) skips the breakpoint check for mplus,
+   mtimes, mexpt, and mnctimes forms (a performance
+   optimization).  Breakpoints set on lines whose top-level
+   form is one of these will be created but never trigger.
+   For example, a breakpoint on "y * 2" (mtimes) will not
+   stop execution.  Fixing this requires moving the breakpoint
+   check before the arithmetic fast-path in meval1's cond,
+   which may have performance implications.
+
+2. Macro debugging:
 
    mdefmacro does not call set-lineinfo or the resolver, so
    deferred breakpoints won't resolve for macros.

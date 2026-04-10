@@ -1,26 +1,153 @@
 /* Tests for Maxima's debugger: breakpoints, deferred breakpoints,
-   and line-snapping.  Uses set_breakpoint(), pending_breakpoints(),
-   and clear_breakpoints() from mdebug.lisp. */
+   line-snapping, path normalization, and breakpoint re-application.
+   Uses set_breakpoint(), breakpoint_line(), pending_breakpoints(),
+   breakpoint_count(), valid_breakpoint_count(), and
+   clear_breakpoints() from mdebug.lisp.
+
+   test_debugger_helper.mac (lines 1-7):
+     1: /* comment */
+     2: /* comment */
+     3: test_debugger_func(x) := block([y],
+     4:   y : x + 1,
+     5:   y * 2
+     6: );
+     7:
+   Executable lines: 3 (mprog), 4 (msetq/mplus), 5 (mtimes).
+   Non-executable: 1, 2 (comments), 6 (closing paren), 7 (blank). */
 
 (kill(all), 0);
 0;
 
-/* === Test 1: Basic function breakpoint by name === */
 
-(f(x) := block([y],
-   y : x + 1,
-   y * 2),
- 0);
+/* ===================================================================
+   Section 1: Function-name breakpoints (offset from function start)
+   =================================================================== */
+
+/* Load file so the function has lineinfo */
+(load(file_search("test_debugger_helper", file_search_tests)), 0);
 0;
 
-/* set_breakpoint returns >= 0 on success, -1 on failure */
-is(set_breakpoint('f, 1) >= 0);
+/* Offset 0 -> function start line (line 3) */
+block([idx], idx : set_breakpoint('test_debugger_func, 0),
+  breakpoint_line(idx));
+3;
+
+clear_breakpoints();
+done;
+
+/* Offset 1 -> line 4 (y : x + 1) */
+block([idx], idx : set_breakpoint('test_debugger_func, 1),
+  breakpoint_line(idx));
+4;
+
+clear_breakpoints();
+done;
+
+/* Offset 2 -> line 5 (y * 2) */
+block([idx], idx : set_breakpoint('test_debugger_func, 2),
+  breakpoint_line(idx));
+5;
+
+clear_breakpoints();
+done;
+
+(kill(test_debugger_func), 0);
+0;
+
+
+/* ===================================================================
+   Section 2: File-path breakpoints (absolute line numbers)
+   =================================================================== */
+
+(load(file_search("test_debugger_helper", file_search_tests)), 0);
+0;
+
+/* File line 3 -> line 3 */
+block([p : file_search("test_debugger_helper", file_search_tests), idx],
+  idx : set_breakpoint(p, 3), breakpoint_line(idx));
+3;
+
+clear_breakpoints();
+done;
+
+/* File line 4 -> line 4 */
+block([p : file_search("test_debugger_helper", file_search_tests), idx],
+  idx : set_breakpoint(p, 4), breakpoint_line(idx));
+4;
+
+clear_breakpoints();
+done;
+
+/* File line 5 -> line 5 */
+block([p : file_search("test_debugger_helper", file_search_tests), idx],
+  idx : set_breakpoint(p, 5), breakpoint_line(idx));
+5;
+
+clear_breakpoints();
+done;
+
+(kill(test_debugger_func), 0);
+0;
+
+
+/* ===================================================================
+   Section 3: Function-name and file-path agree
+   =================================================================== */
+
+(load(file_search("test_debugger_helper", file_search_tests)), 0);
+0;
+
+/* Both paths should land on the same line for each target */
+block([p : file_search("test_debugger_helper", file_search_tests),
+       idx_name, idx_file],
+  idx_name : set_breakpoint('test_debugger_func, 1),
+  clear_breakpoints(),
+  idx_file : set_breakpoint(p, 4),
+  is(breakpoint_line(idx_file) = 4));
 true;
 
 clear_breakpoints();
 done;
 
-/* === Test 2: Deferred breakpoint on nonexistent file === */
+(kill(test_debugger_func), 0);
+0;
+
+
+/* ===================================================================
+   Section 4: Line-snapping for non-executable lines
+   =================================================================== */
+
+(load(file_search("test_debugger_helper", file_search_tests)), 0);
+0;
+
+/* Line 6 (closing paren) snaps to line 5 */
+block([p : file_search("test_debugger_helper", file_search_tests), idx],
+  idx : set_breakpoint(p, 6), breakpoint_line(idx));
+5;
+
+clear_breakpoints();
+done;
+
+/* Line 1 (comment before function) — file is loaded but no function
+   contains this line.  Should fail without deferring. */
+block([p : file_search("test_debugger_helper", file_search_tests)],
+  set_breakpoint(p, 1));
+-1;
+
+/* Should NOT have created a pending breakpoint */
+length(pending_breakpoints());
+0;
+
+clear_breakpoints();
+done;
+
+(kill(test_debugger_func), 0);
+0;
+
+
+/* ===================================================================
+   Section 5: Deferred breakpoints
+   =================================================================== */
 
 /* Breakpoint on a file that isn't loaded should defer */
 is(set_breakpoint("/nonexistent/path/test.mac", 5) = -1);
@@ -44,9 +171,7 @@ done;
 length(pending_breakpoints());
 0;
 
-/* === Test 3: Deferred breakpoint resolves on load === */
-
-/* Get the path that load() will use for the helper file */
+/* Deferred breakpoint resolves on load */
 block([p : file_search("test_debugger_helper", file_search_tests)],
   set_breakpoint(p, 4),
   length(pending_breakpoints()));
@@ -60,11 +185,18 @@ block([p : file_search("test_debugger_helper", file_search_tests)],
 length(pending_breakpoints());
 0;
 
+/* The resolved breakpoint should be on the correct line */
+breakpoint_line(0);
+4;
+
 /* Clean up */
 (clear_breakpoints(), kill(test_debugger_func), 0);
 0;
 
-/* === Test 4: Function still works after breakpoint resolution === */
+
+/* ===================================================================
+   Section 6: Function still works after breakpoint resolution
+   =================================================================== */
 
 (load(file_search("test_debugger_helper", file_search_tests)), 0);
 0;
@@ -75,13 +207,20 @@ test_debugger_func(3);
 (kill(test_debugger_func), 0);
 0;
 
-/* === Test 5: clear_breakpoints resets everything === */
 
-(f(x) := x + 1, 0);
+/* ===================================================================
+   Section 7: clear_breakpoints resets everything
+   =================================================================== */
+
+(load(file_search("test_debugger_helper", file_search_tests)), 0);
 0;
 
-(set_breakpoint('f, 1), set_breakpoint("/no/such/file.mac", 1), 0);
+(set_breakpoint('test_debugger_func, 1),
+ set_breakpoint("/no/such/file.mac", 1), 0);
 0;
+
+is(breakpoint_count() > 0);
+true;
 
 is(length(pending_breakpoints()) > 0);
 true;
@@ -89,54 +228,57 @@ true;
 clear_breakpoints();
 done;
 
+breakpoint_count();
+0;
+
 length(pending_breakpoints());
 0;
 
-/* === Test 6: Breakpoints re-applied on redefinition === */
+(kill(test_debugger_func), 0);
+0;
 
-/* Load a file-defined function so it has lineinfo */
+
+/* ===================================================================
+   Section 8: Breakpoints re-applied on redefinition
+   =================================================================== */
+
 (load(file_search("test_debugger_helper", file_search_tests)), 0);
 0;
 
-/* Set a breakpoint */
-is(set_breakpoint('test_debugger_func, 1) >= 0);
-true;
+/* Set a breakpoint and verify it */
+block([idx], idx : set_breakpoint('test_debugger_func, 1),
+  [breakpoint_count(), valid_breakpoint_count(), breakpoint_line(idx)]);
+[1, 1, 4];
 
-/* Breakpoint should be valid */
-breakpoint_count();
-1;
-
-valid_breakpoint_count();
-1;
-
-/* Reload the file — redefines the function, breakpoints re-applied */
+/* Reload — redefines function, breakpoints should be re-applied */
 (load(file_search("test_debugger_helper", file_search_tests)), 0);
 0;
 
-/* Breakpoint should still be valid (re-applied to new body) */
-breakpoint_count();
-1;
-
-valid_breakpoint_count();
-1;
+/* Breakpoint should still be valid and on the same line */
+[breakpoint_count(), valid_breakpoint_count(), breakpoint_line(0)];
+[1, 1, 4];
 
 (clear_breakpoints(), kill(test_debugger_func), 0);
 0;
 
-/* === Test 7: Path normalization — breakpoint via absolute path === */
 
-/* Load helper file, then set breakpoint using file_search path */
+/* ===================================================================
+   Section 9: Path normalization
+   =================================================================== */
+
 (load(file_search("test_debugger_helper", file_search_tests)), 0);
 0;
 
-/* file_search returns the absolute path; set_breakpoint should match */
-block([p : file_search("test_debugger_helper", file_search_tests)],
-  is(set_breakpoint(p, 4) >= 0));
-true;
+/* file_search returns the absolute path; set_breakpoint should match
+   the lineinfo even though the lineinfo was stored during load */
+block([p : file_search("test_debugger_helper", file_search_tests), idx],
+  idx : set_breakpoint(p, 4),
+  [is(idx >= 0), breakpoint_line(idx)]);
+[true, 4];
 
 (clear_breakpoints(), kill(test_debugger_func), 0);
 0;
 
 /* Final cleanup */
-(kill(f), 0);
+(kill(all), 0);
 0;
