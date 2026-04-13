@@ -464,7 +464,17 @@
     (declare (special *mread-prompt*))
     (and (consp at) (set-env at))
     (cond ((null at)
-	   (break-frame 0 nil)))
+	   (if (> (length *mlambda-call-stack*) 0)
+	       ;; Stack has frames — let break-frame print the location.
+	       (break-frame 0 nil)
+	       ;; Stack is empty (top-level error).  Fall back to
+	       ;; *last-meval1-form* which holds the form being evaluated
+	       ;; when the error occurred.
+	       (let ((lineinfo (get-lineinfo *last-meval1-form*)))
+		 (when (and lineinfo (cadr lineinfo))
+		   (fresh-line *debug-io*)
+		   (format *debug-io* "~a:~a::~%" (cadr lineinfo)
+			   (car lineinfo)))))))
     (catch 'step-continue
       (catch *quit-tag*
 	(unwind-protect
@@ -833,7 +843,11 @@ Command      Description~%~
       (print-one-frame n print-frame-number)
     backtr params vals fname
     (remove-bindings bdlist)
-    (when lineinfo
+    ;; When the stack is empty (top-level error) and frame 0 is requested,
+    ;; fall back to *last-meval1-form* for location info.
+    (when (and (null lineinfo) (eql n 0))
+      (setq lineinfo (get-lineinfo *last-meval1-form*)))
+    (when (and lineinfo (cadr lineinfo))
       (fresh-line *debug-io*)
       (format *debug-io* "~a:~a::~%" (cadr lineinfo) (+ 0 (car lineinfo))))
     (values)))
