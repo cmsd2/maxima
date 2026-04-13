@@ -600,9 +600,13 @@ Command      Description~%~
 			 (return-from joe nil)))
 		  finally
 		  (cond (file-found
-			 ;; File is loaded but no function spans this line
-			 (format t "~&No function in ~a contains line ~a~%"
-				 file li)
+			 ;; File is loaded but no function spans this line.
+			 ;; When called from resolve-pending-breakpoints
+			 ;; (absolute=t), stay silent — the breakpoint remains
+			 ;; pending and will retry when more functions load.
+			 (unless absolute
+			   (format t "~&No function in ~a contains line ~a~%"
+				   file li))
 			 (return-from break-function nil))
 			(t
 			 ;; File not seen in any lineinfo — defer
