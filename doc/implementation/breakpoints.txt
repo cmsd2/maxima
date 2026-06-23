@@ -8,8 +8,8 @@ src/mdebug.lisp and mailing list discussions (2014-2025).
 This file documents the current state — no source changes proposed.
 
 
-1. How break-function works (src/mdebug.lisp line 494)
-------------------------------------------------------
+1. How break-function works (src/mdebug.lisp)
+---------------------------------------------
 
 break-function takes a function name (symbol) or filename (string)
 and an optional line offset.
@@ -51,7 +51,7 @@ There is no mechanism to:
   - Automatically set breakpoints after a file is loaded
   - Re-apply breakpoints after a function is redefined
 
-The comment at line 541 confirms this was a known gap:
+A comment in break-function confirms this was a known gap:
 
   ;; note  need to make the redefine function, fixup the break point list..
 
@@ -113,7 +113,7 @@ archive (~38k messages, 2014-2026).
 5. What the file-path breakpoint scan actually does
 ---------------------------------------------------
 
-The file-path code path (mdebug.lisp lines 499-513) does:
+The file-path code path inside break-function does:
 
   (loop named joe for vv being the symbols of 'maxima
         with tem with linfo
@@ -178,11 +178,11 @@ d) The function-name + offset approach:
 7. Non-executable lines and the lineinfo gap
 ---------------------------------------------
 
-The lineinfo vector built by set-full-lineinfo (mdebug.lisp:189)
-stores one form per source line.  walk-get-lineinfo walks the
-parsed body tree and records the first form encountered for each
-line number.  Lines that do not produce an evaluable form get nil
-in the vector (lines 216-217 explicitly fill gaps with nil):
+The lineinfo vector built by set-full-lineinfo stores one form
+per source line.  walk-get-lineinfo walks the parsed body tree
+and records the first form encountered for each line number.
+Lines that do not produce an evaluable form get nil in the
+vector (walk-get-lineinfo explicitly fills the gaps with nil):
 
   (loop for j from (fill-pointer ar) below i
      do (setf (aref ar j) nil))
@@ -199,17 +199,17 @@ Lines that produce nil entries include:
 Consequences:
 
 a) Breakpoints on nil-slot lines:
-   first-form-line (mdebug.lisp:224) walks the body looking for
-   a form whose lineinfo matches the requested line.  If no form
-   has that line number, it returns nil and break-function prints
-   "No instructions recorded for this line".  There is no fallback
-   to the nearest executable line.
+   first-form-line walks the body looking for a form whose
+   lineinfo matches the requested line.  If no form has that
+   line number, it returns nil and break-function prints
+   "No instructions recorded for this line".  There is no
+   fallback to the nearest executable line.
 
-   Special case: if li=0 and no form found, break-function retries
-   with li=1 (line 527-528).  This is the only "snap" behavior.
+   Special case: if li=0 and no form found, break-function
+   retries with li=1.  This is the only "snap" behavior.
 
 b) Stepping over nil-slot lines:
-   break-step-into (line 171) calls maybe-break, which does
+   break-step-into calls maybe-break, which does
    (position form line-info).  The stepper only stops when the
    current form appears in the lineinfo vector.  Forms on nil-slot
    lines are never in the vector, so the stepper skips them
@@ -224,8 +224,8 @@ c) Impact on IDE integration:
    from the debugger protocol.
 
 
-8. How meval1 checks breakpoints (mlisp.lisp:282-295)
------------------------------------------------------
+8. How meval1 checks breakpoints (src/mlisp.lisp)
+-------------------------------------------------
 
 The breakpoint/stepping check is embedded in meval1's main
 dispatch as a cond clause:
@@ -258,40 +258,37 @@ Key details:
     check.
 
 
-9. Possible Maxima improvements (not proposed, just noted)
-----------------------------------------------------------
+9. Improvements addressed in this branch
+----------------------------------------
 
-If someone wanted to improve the debugger in Maxima itself:
+The deferred-breakpoints PR addresses items (a), (b), (c), and (e)
+below.  See doc/implementation/breakpoints-proposal.txt for the
+implementation details.  (d) and (f) remain open.
 
-a) Deferred breakpoints:
-   - Add a *pending-breakpoints* list
-   - Hook into mdefine / mdefmacro to check if a newly defined
-     function matches any pending breakpoint
-   - Apply the breakpoint and remove from pending list
+a) Deferred breakpoints — implemented.
+   *pending-breakpoints* list; mdefine hook resolves entries when
+   the target file is loaded.
 
-b) Redefinition resilience:
-   - Hook into mdefine to check *break-point-vector* for breakpoints
-     on the function being redefined
-   - Re-apply them to the new form at the same line offset
+b) Redefinition resilience — implemented.
+   reapply-breakpoints-for-function runs from the mdefine hook,
+   re-targeting breakpoints onto the new form at the same absolute
+   line.
 
-c) Path normalization for file breakpoints:
-   - Resolve to absolute path via truename/probe-file before
-     comparison
-   - Store normalized paths in line info at load time
+c) Path normalization for file breakpoints — implemented.
+   get-instream stores truenames; break-function and
+   resolve-pending-breakpoints normalize via probe-file before
+   comparison.
 
-d) Structured breakpoint protocol:
-   - Instead of printing "Bkpt N for foo (in file line M)",
-     emit a machine-readable form that a DAP server can parse
-     reliably
+d) Structured breakpoint protocol — not implemented.
+   Breakpoint events still go through human-readable format calls.
+   A DAP-friendly machine-readable form is a separate effort.
 
-e) Snap-to-nearest for non-executable lines:
-   - Modify first-form-line (or add a wrapper) to search forward
-     then backward for the nearest line with a non-nil entry
-   - Similarly modify stepping to report the nearest steppable
-     line rather than silently skipping
+e) Snap-to-nearest for non-executable lines — implemented.
+   nearest-executable-line wraps first-form-line with a bidirectional
+   search.  Stepping behaviour is unchanged: meval1's per-form check
+   still skips non-evaluable lines, which is the natural behaviour
+   for source-line stepping in a tree-walking evaluator.
 
-f) Source-line display at break:
-   - When stopped at a breakpoint, read the actual source file
-     and display surrounding lines for context
-   - Would require storing the source file path (already in
-     lineinfo) and verifying the file is still accessible
+f) Source-line display at break — not implemented.
+   The breakpoint event still reports file:line only; reading and
+   displaying source-file context is a separate effort.

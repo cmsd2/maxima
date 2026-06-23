@@ -159,7 +159,8 @@
 			     (if truename (namestring truename) (first bp)))))
 	      (if (equal bp-file file)
 		  (progn
-		    (format t "~&Resolving deferred breakpoint ~a:~a~%"
+		    (format *debug-io*
+			    (intl:gettext "~&Resolving deferred breakpoint ~a:~a~%")
 			    (first bp) (second bp))
 		    (unless (break-function (first bp) (second bp) t)
 		      ;; Still couldn't resolve — keep it pending
@@ -184,7 +185,8 @@
 	(iterate-over-bkpts bp-indices :delete)
 	;; Re-apply each breakpoint at the same absolute line
 	(dolist (line (nreverse lines-to-reapply))
-	  (format t "~&Re-applying breakpoint for ~a at line ~a~%"
+	  (format *debug-io*
+		  (intl:gettext "~&Re-applying breakpoint for ~a at line ~a~%")
 		  ($sconcat fnname) line)
 	  (break-function fnname line t))))))
 
@@ -276,14 +278,24 @@
 		  when (setq tem (first-form-line v line))
 		  do (return-from first-form-line tem)))))
 
+(defvar *nearest-executable-line-search-radius* 50
+  "Maximum number of lines to search forward or backward from a
+   requested breakpoint line when snapping to the nearest executable
+   line.  Large enough to skip long comment blocks; small enough to
+   keep the breakpoint within the user's intended region.")
+
 (defun nearest-executable-line (form target-line)
   "Find the form nearest to TARGET-LINE.  Tries exact match first,
-   then searches forward and backward up to 50 lines."
+   then searches outward, alternating forward and backward by one
+   line at a time, up to *nearest-executable-line-search-radius*
+   lines in each direction.  Returns two values: the form, and its
+   actual source line.  Returns nil if no executable form is found
+   within the search radius."
   (let ((exact (first-form-line form target-line)))
     (when exact
       (return-from nearest-executable-line
 	(values exact target-line))))
-  (loop for delta from 1 to 50
+  (loop for delta from 1 to *nearest-executable-line-search-radius*
 	do (let ((fwd (first-form-line form (+ target-line delta))))
 	     (when fwd
 	       (return-from nearest-executable-line
@@ -605,14 +617,13 @@ Command      Description~%~
 			 ;; (absolute=t), stay silent — the breakpoint remains
 			 ;; pending and will retry when more functions load.
 			 (unless absolute
-			   (format t "~&No function in ~a contains line ~a~%"
+			   (format *debug-io* (intl:gettext "~&No function in ~a contains line ~a~%")
 				   file li))
 			 (return-from break-function nil))
 			(t
 			 ;; File not seen in any lineinfo — defer
 			 (push (list file li) *pending-breakpoints*)
-			 (format t "~&Breakpoint at ~a line ~a deferred ~
-                                      (file not yet loaded)~%" file li)
+			 (format *debug-io* (intl:gettext "~&Breakpoint at ~a line ~a deferred (file not yet loaded)~%") file li)
 			 (return-from break-function nil)))))))
   (setq fun ($concat fun))
 					; (print (list 'fun fun 'hi))
@@ -627,13 +638,11 @@ Command      Description~%~
 	     (nearest-executable-line form i)
 	   (cond (found-form
 		  (unless (eql actual-line i)
-		    (format t "~&Line ~a has no executable code; ~
-                               adjusted to line ~a~%" i actual-line))
+		    (format *debug-io* (intl:gettext "~&Line ~a has no executable code; adjusted to line ~a~%") i actual-line))
 		  (setq form found-form)
 		  (setq i actual-line))
 		 (t
-		  (format t "~&No executable code found near line ~a ~
-                             of ~a~%" i ($sconcat fun))
+		  (format *debug-io* (intl:gettext "~&No executable code found near line ~a of ~a~%") i ($sconcat fun))
 		  (return-from break-function nil))))
 	 (let ((n (insert-break-point    (make-bkpt :form form
 						    :file-line i
@@ -769,9 +778,9 @@ Command      Description~%~
 	(if *pending-breakpoints*
 	    (loop for bp in *pending-breakpoints*
 		  for i from 0
-		  do (format t "~&Pending ~a: ~a line ~a~%"
+		  do (format *debug-io* (intl:gettext "~&Pending ~a: ~a line ~a~%")
 			     i (first bp) (second bp)))
-	    (format t "~&No pending breakpoints~%"))
+	    (format *debug-io* (intl:gettext "~&No pending breakpoints~%")))
 	(values))
   "Show breakpoints waiting for files to be loaded")
 
