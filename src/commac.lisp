@@ -818,6 +818,15 @@
 	      (fboundp x) t))
 	 ((cl:functionp x))))
 
+(defun canonical-pathname-string (path-or-stream)
+  "Return the truename namestring of PATH-OR-STREAM, or its plain
+   namestring if the file does not exist.  Accepts any pathname
+   designator (string, pathname, or open file stream)."
+  (let ((truename (probe-file path-or-stream)))
+    (if truename
+	(namestring truename)
+	(namestring path-or-stream))))
+
 ;; These symbols are shadowed because we use them also as special
 ;; variables.
 (deff break #'cl:break)

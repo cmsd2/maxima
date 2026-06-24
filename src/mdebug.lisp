@@ -155,8 +155,7 @@
       (when file
 	(let ((remaining nil))
 	  (dolist (bp *pending-breakpoints*)
-	    (let ((bp-file (let ((truename (probe-file (first bp))))
-			     (if truename (namestring truename) (first bp)))))
+	    (let ((bp-file (canonical-pathname-string (first bp))))
 	      (if (equal bp-file file)
 		  (progn
 		    (format *debug-io*
@@ -598,8 +597,7 @@ Command      Description~%~
     (format t "~&Turning on debugging debugmode(true)~%")
     (setq *mdebug* t))
   (cond ((stringp fun)
-	 (let ((file (let ((truename (probe-file fun)))
-		       (if truename (namestring truename) fun)))
+	 (let ((file (canonical-pathname-string fun))
 	       start file-found)
 	   (loop named joe for vv being the symbols of 'maxima with tem with linfo
 		  when (typep (setq tem (set-full-lineinfo vv)) 'vector)

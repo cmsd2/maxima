@@ -1779,10 +1779,7 @@
 	(cond ((eq str (instream-stream v))
 	       (return v))))
       (let (name errset)
-	(errset (setq name (let ((truename (probe-file str)))
-			     (if truename
-				 (namestring truename)
-				 (namestring str)))))
+	(errset (setq name (canonical-pathname-string str)))
 	(car (setq *stream-alist*
 		   (cons  (make-instream :stream str :stream-name name)
 			  *stream-alist*))))))
