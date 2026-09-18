@@ -22,6 +22,12 @@ import csv
 import re
 
 
+# Indicators written by DEFPROP forms that the translator emits into
+# generated code (TR-MDEFINE-TOPLEVEL, DEFMTRFUN callers); converting them
+# would change translate_file output (allowlisted, see stage D).
+GENERATED_INDICATORS = {"TRANSLATED"}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("tsv")
@@ -97,6 +103,22 @@ def main():
     print("\n## B. In-place mutation of stored values\n")
     for (o, i), n in top(B, lambda r: (r[3], r[5])):
         print("- %s `%s`: %d" % (o, i, n))
+
+    # Final verdict: every class A write must fall in a documented class.
+    load_units = [r for r in A if r[0].startswith("load:")]
+    generated = [r for r in A if not r[0].startswith("load:")
+                 and r[5] in GENERATED_INDICATORS]
+    other = [r for r in A if not r[0].startswith("load:")
+             and r[5] not in GENERATED_INDICATORS]
+    print("\n## Verdict on class A\n")
+    print("| Documented class | Writes |")
+    print("|---|---|")
+    print("| Package loading at run time (load: units) | %d |" % len(load_units))
+    print("| Translator-generated code (%s) | %d |" % (
+        ", ".join(sorted(GENERATED_INDICATORS)), len(generated)))
+    print("| **Undocumented (must be 0)** | **%d** |" % len(other))
+    for r in other[:20]:
+        print("- %s problem %s: %s %s %s" % (r[0], r[1], r[2], r[4], r[5]))
 
     print("\n## C. Value-cell changes by category\n")
     cats = collections.Counter(churn.get(r[4], "uncategorised") for r in C)

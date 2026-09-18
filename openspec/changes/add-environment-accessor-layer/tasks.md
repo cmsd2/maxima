@@ -153,7 +153,7 @@ about 7 minutes of machine time per file, 4–5 hours in total.
 
 ## 7. Stage E: functional tests (validation levels 1 and 2)
 
-- [ ] 7.1 Write the Lisp-level test script (loaded into the built image, like
+- [x] 7.1 Write the Lisp-level test script (loaded into the built image, like
   `tests/depcheck.sh`) with a recording hook and one check per scenario for:
   - definition, `tellsimp` and `kill` removal;
   - hidden writes during `sign` after `assume`;
@@ -161,48 +161,50 @@ about 7 minutes of machine time per file, 4–5 hours in total.
   - `block` bind and restore.
 
   Verify that the script exits 0.
-- [ ] 7.2 Add the refusal scenario: a hook that `merror`s on writes to `$g`,
+- [x] 7.2 Add the refusal scenario: a hook that `merror`s on writes to `$g`,
   where `errcatch(g(x):=x)` returns `[]` and `g` has no `mexpr`. Verify that
   the script exits 0.
-- [ ] 7.3 Add the expected-writer table (spec "Known hidden writers are
-  reported"): `rat`, `sign` after `assume`, series `limit`, `integrate`
-  context, `rectform((-1)^a)`, `block`. Each runs in a fresh session. Verify
+- [x] 7.3 Add the expected-writer table (spec "Known hidden writers are
+  reported"): `ratdisrep(rat(x+y))`, `sign` after `assume`, `gruntz`
+  series path, `integrate` context, `rectform(x^a)`, `block`. *Revised in
+  stage E:* `rat(x+y)` alone writes no `DISREP` (only gensym value cells), and
+  `rectform((-1)^a)` makes a redundant assumption that writes nothing. Each runs in a fresh session. Verify
   that every row fires and the script names any row that doesn't.
 
 ## 8. Stage E: profile report (validation level 5)
 
-- [ ] 8.1 Write the aggregated profile report (design D10): operation ×
+- [x] 8.1 Write the aggregated profile report (design D10): operation ×
   object kind × indicator, with optional region marking and per-iteration
   counts. Verify that a CRE-heavy workload groups gensym writes under
   Maxima-created, with no gensym names in the output.
-- [ ] 8.2 Profile three fixed workloads (a slice of the suite, a `rat` loop,
+- [x] 8.2 Profile three fixed workloads (a slice of the suite, a `rat` loop,
   an `integrate` loop) three times each in fresh sessions. Verify that the
   profiles are identical across runs.
 
 ## 9. Stage E: full validation (validation levels 0, 3 and 4)
 
-- [ ] 9.1 Run the full suite, share tests included, with the oracle on.
+- [x] 9.1 Run the full suite, share tests included, with the oracle on.
   Verify that there are no unexplained differences. Each remaining one is
   fixed by conversion or added to the unobserved list with a reason, and the
   final run lists none.
-- [ ] 9.2 Rerun the seeded-bypass tests (5.2) on the converted build. Verify
+- [x] 9.2 Rerun the seeded-bypass tests (5.2) on the converted build. Verify
   that all are still caught.
-- [ ] 9.3 Run `run_testsuite(share_tests=true)` with no hook installed.
+- [x] 9.3 Run `run_testsuite(share_tests=true)` with no hook installed.
   Verify that the results match the 1.3 baseline exactly: same failures,
   `No unexpected errors`, no newly unexpected passes.
-- [ ] 9.4 Run the core suite with a passive counting hook. Verify that the
+- [x] 9.4 Run the core suite with a passive counting hook. Verify that the
   results match the 1.3 baseline, and record the total write count.
-- [ ] 9.5 Run the differential corpus on the converted build with no hook and
+- [x] 9.5 Run the differential corpus on the converted build with no hook and
   with a passive hook. Verify that both outputs match the 2.3 baseline
   exactly after the 2.2 exclusions.
-- [ ] 9.6 Time the core suite in alternating baseline and changed runs, three
+- [x] 9.6 Time the core suite in alternating baseline and changed runs, three
   each after a discarded first run, with no hook installed. Verify that the
   difference in mean time is smaller than the larger run-to-run spread, and
   record the numbers.
 
 ## 10. Stage E: documentation
 
-- [ ] 10.1 Document the facility in `docs/multithreading/`:
+- [x] 10.1 Document the facility in `docs/multithreading/`:
   - the hook's calling convention and observer rules (reentrancy, never
     refuse `:unbind`, refuse at the first write);
   - how to run the scanner, tests, oracle, corpus and profile report;
@@ -211,10 +213,10 @@ about 7 minutes of machine time per file, 4–5 hours in total.
 
   Verify that every allowlist entry and every oracle unobserved-class entry
   appears in the unobserved list.
-- [ ] 10.2 Record the passive-hook write count (9.4), the timings (9.6), the
+- [x] 10.2 Record the passive-hook write count (9.4), the timings (9.6), the
   corpus size, the gap report's starting and final counts (5.4, 9.1), and
   the oracle results in the document. Verify that the numbers are present.
-- [ ] 10.3 **Gate E.** Confirm that validation levels 0–5 in doc 05 have all
+- [x] 10.3 **Gate E.** Confirm that validation levels 0–5 in doc 05 have all
   passed. Stop for review.
 
 ## 11. Stage F: first measurement (validation level 6)

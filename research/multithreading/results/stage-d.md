@@ -20,13 +20,13 @@ and the full suite under the oracle at no unexpected errors.
 | `compar.lisp` | full | 1,241 | one `$INITIAL` removal |
 | 24 small files + run-time `defprop`s | batch | **181** | |
 
-Allowlist: 39 entries, each with a reason.
+Allowlist: 28 entries covering 39 sites, each with a reason.
 
 | Kind | Entries |
 |---|---|
 | Funnel functions | 3 |
 | Unbuilt `optimize.lisp` | 2 |
-| Definer macros called only at top level (verified by call-site scan) | 31 |
+| Definer macros called only at top level (verified by call-site scan) | 20 |
 | Functions that emit code for output files | 3 |
 
 ## How the conversions were made

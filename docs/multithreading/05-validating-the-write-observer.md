@@ -84,11 +84,11 @@ without relying on its reports:
 
   | Trigger | Expected report |
   |---|---|
-  | `rat(x+y)` | `disrep` put on a CRE gensym |
+  | `ratdisrep(rat(x+y))` | `disrep` put on a CRE gensym (`rat` alone only renumbers gensym value cells) |
   | `sign(x)` after `assume(x>0)` | `+labs` puts on the node |
   | `limit(…)` via the series path | `internal` put on the limit variable |
   | `integrate(…)` | Context switch (`subc` put on a new context symbol) |
-  | `rectform((-1)^a)` | Fact assume, then forget (`absarg1`) |
+  | `rectform(x^a)` | Fact assume, then forget (`absarg1`); `(-1)^a` makes a redundant assumption and writes nothing |
   | `f(x):=…`, `tellsimp`, `declare`, `kill` | `mexpr`/`mprops`, `operators`, `opers`, remove or replace-plist |
   | `block([z:1], …)` | `:assign`, then `:unbind` for `$z` |
 

@@ -142,7 +142,10 @@ raw report stays complete.")
                       (unless (= (cddr os) (cddr ns))
                         (push (list :replaced obj (car ns)) diffs)))
                      ((/= (cddr os) (cddr ns))
-                      (push (list :mutated obj (car ns)) diffs)))))
+                      ;; Keep the stored value: a funnelled write to the
+                      ;; value object itself (an MPROPS cell, a node plist)
+                      ;; explains the mutation.
+                      (push (list :mutated obj (car ns) (cadr ns)) diffs)))))
            (dolist (os old-slots)
              (unless (assoc (car os) new-slots :test #'eq)
                (push (list :removed obj (car os)) diffs)))))
@@ -172,10 +175,15 @@ conses whose contents change, so EQUAL keys would not be found again.")
            (gethash obj *oracle-log*)))
 
 (defun oracle-explained-p (d)
-  (destructuring-bind (kind obj ind) d
-    (and (not (member kind '(:mutated :appeared :vanished)))
-         (let ((seen (gethash obj *oracle-log*)))
-           (or (member ind seen) (member :any seen))))))
+  (destructuring-bind (kind obj ind &optional val) d
+    (cond ((member kind '(:appeared :vanished)) nil)
+          ((eq kind :mutated)
+           ;; In-place change of a stored object is explained only when the
+           ;; hook saw a write addressed to that object (for example PUTPROP
+           ;; on the MPROPS cell, which is a cons treated as a node).
+           (and (consp val) (gethash val *oracle-log*) t))
+          (t (let ((seen (gethash obj *oracle-log*)))
+               (or (member ind seen) (member :any seen)))))))
 
 ;;; ------------------------------------------------------------ reporting
 
@@ -210,7 +218,8 @@ conses whose contents change, so EQUAL keys would not be found again.")
     (unless (oracle-explained-p d)
       (incf (getf *oracle-stats* :unexplained))
       (when *oracle-out*
-        (destructuring-bind (kind obj ind) d
+        (destructuring-bind (kind obj ind &optional val) d
+          (declare (ignore val))
           (with-standard-io-syntax
             (let ((*package* (find-package :maxima)))
               (format *oracle-out* "~A~C~D~C~(~A~)~C~A~C~A~C~S~%"

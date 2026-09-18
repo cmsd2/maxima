@@ -176,11 +176,11 @@ kind. The expected pairs are at least:
 
 | Trigger | Expected report |
 |---|---|
-| `rat(x+y)` | a property put of `disrep` on a Maxima-created symbol |
+| `ratdisrep(rat(x+y))` | a property put of `disrep` on a Maxima-created symbol |
 | `sign(x)` after `assume(x>0)` | label property puts on a database node |
-| a `limit` taking the series path | a put of `internal` on the limit variable |
-| `integrate` of an expression that creates a temporary context | a put of `subc` on a new context symbol |
-| `rectform((-1)^a)` | fact-database writes for a temporary assumption |
+| a limit taking the series path (`gruntz(x^2/exp(x), x, inf)`) | a put of `internal` on the limit variable |
+| `integrate(1/(1+x^2), x)` (creates a temporary context) | a put of `subc` on a new context symbol |
+| `rectform(x^a)` | fact-database writes for a temporary assumption |
 | `block([z:1], z)` | an assignment and a restoration of `z` |
 
 #### Scenario: Every expected writer fires
