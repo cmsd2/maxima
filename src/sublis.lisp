@@ -55,14 +55,14 @@
   (do ((x s (cdr x)) (temp) (temp1)) ((null x))
     (cond ((not (symbolp (setq temp (caar x))))
 	   (merror (intl:gettext "sublis: left-hand side of equation must be a symbol; found: ~M") temp)))
-    (setf (symbol-plist temp) (list* *msublis-marker* (cdar x) (symbol-plist temp)))
+    (replace-symbol-plist temp (list* *msublis-marker* (cdar x) (symbol-plist temp)))
     (cond ((not (eq temp (setq temp1 (getopr temp))))
-	   (setf (symbol-plist temp1) (list* *msublis-marker* (cdar x) (symbol-plist temp1)))
+	   (replace-symbol-plist temp1 (list* *msublis-marker* (cdar x) (symbol-plist temp1)))
 	   (push (ncons temp1) s)))))	; Remember extra cleanup
 
 (defun msublis-unsetup ()
   (declare (special s))
-  (do ((x s (cdr x))) ((null x)) (remprop (caar x) *msublis-marker*)))
+  (do ((x s (cdr x))) ((null x)) (zl-remprop (caar x) *msublis-marker*)))
 
 (defun msublis-subst (form flag)
   (cond ((atom form)
