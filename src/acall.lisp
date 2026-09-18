@@ -229,7 +229,7 @@
 	(t
 	 (setq ary (gensym))
 	 (mputprop fnname ary 'hashar)
-	 (setf (symbol-array ary) (make-array 7 :initial-element nil))
+	 (putprop ary (make-array 7 :initial-element nil) 'array)
 	 (setf (aref (symbol-array ary) 0) 4)
 	 (setf (aref (symbol-array ary) 1) 0)
 	 (setf (aref (symbol-array ary) 2) number-of-args))))
