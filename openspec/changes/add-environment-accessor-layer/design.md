@@ -206,8 +206,17 @@ profiles repeatable by construction.
   `^`, `sin`, `log`, `abs`, `sqrt`, `integrate`, `limit`), with a fixed seed
   so that runs are reproducible.
 
-**Method:** each input runs in its own process with `timeout`, following
-the AGENTS.md sec. 3 traps, under `display2d:false`. Output is normalised by
+**Method:** each corpus *file* runs in its own process under `timeout`,
+following the AGENTS.md sec. 3 traps, under `display2d:false`. rtest and demo
+files are read with `batch`, so every input and its result are printed.
+
+*Revised during stage A:* one process per file, not per input. The corpus has
+thousands of inputs, and at about 0.5 s of Maxima start-up each, one process
+per input would take hours. Running a whole file keeps the order of inputs
+deterministic across builds (an input that poisons later ones does so the
+same way in both), and `timeout` still isolates hangs. Demo files that open
+viewers or read the terminal are skipped by pattern and listed in the
+manifest. Output is normalised by
 rewriting gensym names to positional placeholders and stripping timing lines.
 It runs on the baseline build, the changed build with no observer, and the
 changed build with a passive observer. All three outputs must match.

@@ -1,0 +1,2 @@
+# corpus path	regex (multiline)	replacement	reason
+tests/rtest_hg.mac	(absolute_real_time\(\)-start,print\(time\),is\(time < 400\)\)\n)\d+ 	\1<ELAPSED> 	prints its own elapsed wall time in seconds

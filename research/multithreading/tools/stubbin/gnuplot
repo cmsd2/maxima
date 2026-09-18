@@ -1,0 +1,4 @@
+#!/bin/sh
+# Stand-in for gnuplot during corpus runs: never opens a window.
+cat > /dev/null 2>&1
+exit 0

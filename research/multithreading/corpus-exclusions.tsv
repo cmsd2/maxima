@@ -1,0 +1,6 @@
+# corpus path	reason
+share/tensor/tensor.dem	interactive menu: reads a choice, gets EOF, loops printing "Invalid entry" until killed (1.7 GB in 300 s)
+tests/rtest_great_slow.mac	deliberately excluded from the test suite; its header says it takes about an hour
+share/simplification/ineq.dem	hangs in the baseline build at input 5, (b > c)+%; not a corpus artefact
+share/descriptive/rtest_statgraph.mac	output is a histogram of random samples; differs every run
+share/contrib/diffequations/tests/rtestode_kamke_1_4.mac	exhausts the default 1 GB SBCL heap and dies (fatal error, heap dump) in the baseline build; the dump differs every run

@@ -1,0 +1,4 @@
+# file	enclosing form	reason
+# Funnel functions: these ARE the observable path.
+globals.lisp	defun putprop	funnel: the observable property-put path itself
+clmacs.lisp	defun zl-remprop	funnel: the observable property-remove path itself
