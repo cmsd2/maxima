@@ -24,7 +24,7 @@ before starting the next.
 
 ## 2. Stage B: the process pool
 
-- [ ] 2.1 Write the pool (`research/multithreading/tools/pool.lisp`):
+- [x] 2.1 Write the pool (`research/multithreading/tools/pool.lisp`):
   - check that the image runs one thread;
   - static and dynamic scheduling (design D2, including the `PIPE_BUF`
     token limit check);
@@ -36,15 +36,15 @@ before starting the next.
     wait and read times.
 
   Verify that a 4-tolerance run at *p* = 3 in both modes returns 81 results.
-- [ ] 2.2 Add the correctness check: compare the pooled list with the
+- [x] 2.2 Add the correctness check: compare the pooled list with the
   sequential list by `alike1`, element by element, and fail naming the
   first differing index. Verify with a planted fault (one worker returning
   a wrong value for one index) that the run is reported failed, naming that
   index.
-- [ ] 2.3 Add the isolation test (spec "Workers share nothing"): a work item
+- [x] 2.3 Add the isolation test (spec "Workers share nothing"): a work item
   that assigns a global and defines a function. Verify that the parent has
   neither afterwards and the results are correct.
-- [ ] 2.4 **Gate B.** Pool correct in both modes at *p* = 1, 2, 4, 10 on the
+- [x] 2.4 **Gate B.** Pool correct in both modes at *p* = 1, 2, 4, 10 on the
   4- and 6-tolerance workloads; planted fault caught; isolation holds.
   Stop for review.
 
