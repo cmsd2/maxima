@@ -146,7 +146,7 @@
 		       (cond ((and (not (symbolp x))
 			           (functionp x))
 		              (let ((tem (gensym)))
-			        (setf (get  tem  'operators) 'application-operator)
+			        (putprop tem 'application-operator 'operators)
 			        (setf (symbol-function tem) x)
 			        (setq x tem))))
 		       (subst1 x y z)))
