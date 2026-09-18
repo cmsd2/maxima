@@ -25,12 +25,12 @@
 
 (defun putopr (x y)
   (or
-    (and (symbolp x) (setf (get x 'opr) y))
+    (and (symbolp x) (putprop x y 'opr))
     (and (stringp x) (setf (gethash x *opr-table*) y))))
 
 (defun remopr (x)
   (or
-    (and (symbolp x) (remprop x 'opr))
+    (and (symbolp x) (zl-remprop x 'opr))
     (and (stringp x) (remhash x *opr-table*))))
 
 
