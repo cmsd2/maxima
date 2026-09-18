@@ -191,7 +191,7 @@
     (putprop (car tempvarl) n 'varorder)))
 
 (defun remorder (gvarl)
-  (mapc #'(lambda (x) (remprop x 'varorder)) gvarl))
+  (mapc #'(lambda (x) (zl-remprop x 'varorder)) gvarl))
 
 
 (defun orderlessp (eqn1 eqn2)
