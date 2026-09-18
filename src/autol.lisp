@@ -36,9 +36,11 @@
 ;;for defmspec
 (defun auto-mspec (fun file )
   (unless (get fun 'mfexpr*)
-    (putprop fun #'(lambda (l)
-	      (aload file)
-	      (funcall (get fun 'mfexpr*) l)) 'mfexpr*)))
+    (putprop fun
+	     #'(lambda (l)
+		 (aload file)
+		 (funcall (get fun 'mfexpr*) l))
+	     'mfexpr*)))
 
 ;;foo(x,y):=..
 (defun auto-mexpr (fun file)
