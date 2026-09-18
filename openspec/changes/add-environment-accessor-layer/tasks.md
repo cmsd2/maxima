@@ -132,23 +132,23 @@ and oracle run once per batch of about 10 files. If a batch's class A count
 doesn't fall as expected, bisect within the batch. The full gate would cost
 about 7 minutes of machine time per file, 4–5 hours in total.
 
-- [ ] 6.1 Convert run-time `(setf (get …))` sites on the worklist to
+- [x] 6.1 Convert run-time `(setf (get …))` sites on the worklist to
   `putprop`, checking each site's use of the return value. Verify each file
   against the per-file gate.
-- [ ] 6.2 Convert run-time `remprop` sites to `zl-remprop`, checking return
+- [x] 6.2 Convert run-time `remprop` sites to `zl-remprop`, checking return
   value use. Verify each file against the per-file gate; for `suprv1.lisp`,
   also verify that `kill(f)` after a definition records `:remove` or
   `:replace-plist` for `$f`.
-- [ ] 6.3 Convert run-time `(setf (symbol-plist …))` sites (`kill` in
+- [x] 6.3 Convert run-time `(setf (symbol-plist …))` sites (`kill` in
   `suprv1.lisp`, `ordervar` in `nalgfa.lisp`, `sublis`, `hayat`) to the
   replacement funnel. Verify each file against the per-file gate.
-- [ ] 6.4 Review the macro bodies the scanner flags (`defmacro`,
+- [x] 6.4 Review the macro bodies the scanner flags (`defmacro`,
   `def-simplifier`). Convert expansions that land in function bodies, and
   allowlist load-time ones with a reason. Verify that the scanner exits 0.
-- [ ] 6.5 Rebuild. Run the stale-image check from AGENTS.md sec. 4 and grep
+- [x] 6.5 Rebuild. Run the stale-image check from AGENTS.md sec. 4 and grep
   the build log for `caught ERROR`, `caught WARNING` and
   `undefined function:`. Verify that all three are clean.
-- [ ] 6.6 **Gate D.** Rerun the oracle over the full suite and record the
+- [x] 6.6 **Gate D.** Rerun the oracle over the full suite and record the
   unexplained count against the 5.4 starting point. Stop for review.
 
 ## 7. Stage E: functional tests (validation levels 1 and 2)
