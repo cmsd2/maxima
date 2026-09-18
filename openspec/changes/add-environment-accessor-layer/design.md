@@ -235,6 +235,27 @@ workload profile is produced, so the profile is read against criteria
 fixed in advance. This is process, not code, but it is a task, so that it
 isn't skipped.
 
+### D13. Region mode for the oracle (added after stage E)
+
+Stage C showed that the hook's scope is the smaller part of environment
+change, so the level-6 measurement uses the oracle as the primary
+instrument. Per-test-problem snapshots are too coarse for a loop body, so
+the oracle gains a region mode:
+
+- `oracle-region-begin` takes a snapshot; each call to
+  `oracle-region-step` (one per iteration) diffs against the previous
+  snapshot and records the differences with the iteration number;
+  `oracle-region-end` stops.
+- The hook log keeps working as the explainer, as in D9, so each difference
+  is still attributed (explained by a funnelled write, or unobserved class
+  B/C/M).
+- `gap_report.py` separates iteration 1 from the steady state (iterations
+  2 and later, which must repeat) and assigns steady-state writes to the
+  fix tiers in doc 05.
+
+*Alternative:* profile with the hook alone. Rejected: the hook doesn't see
+classes B and C, which carry most of the concurrency hazard.
+
 ## Risks / Trade-offs
 
 - **[A converted site changes behaviour]**

@@ -22,11 +22,46 @@ The profile feeds one decision. **The criteria below must be recorded before
 any measurement is taken**, so that the result can't be read to suit a
 preferred answer.
 
-| Profile inside the region | Conclusion |
+### Decision criteria (level 6)
+
+*Revised after stage E, before any workload was profiled.* The first
+version classified only what the hook sees (plist slot writes). Stage C
+showed that most environment change is in-place mutation (oracle class B)
+and special-variable assignment (class C). The **oracle** is therefore the
+primary instrument, with the hook adding attribution. The criteria cover
+all classes.
+
+**Steady state only.** Profile at least three iterations of the loop body
+with a snapshot per iteration. Writes that happen only in the first
+iteration (autoload, memo tables, bigfloat constants, first-use caches) can
+be handled by a warm-up iteration before a parallel region, which is itself
+a contained fix. Only writes that recur in **every** iteration after the
+first count against threads.
+
+**Fix tiers.** Every steady-state write is placed in one tier, using doc
+03's classification:
+
+| Tier | Meaning | Oracle classes and categories |
+|---|---|---|
+| **T1: bind per thread** | a Lisp binding at thread entry confines it | C: driver-io, repl-labels, eval-trace, algorithm-scratch, result-vars, bigfloat-cache, cre-pool (`varlist`, `genvar`); `:assign`/`:unbind` of `block`/function locals (needs `mbind` rebuilt on `progv`, doc 03) |
+| **T2: per-query or per-thread structure** | a contained redesign already sized in doc 03 | C: factdb-scratch (per-query label table); factdb-contexts (per-thread context). A: `+labs`/`-labs`/`ulabs` label writes. B: fact `DATA` mutation by a temporary `assume`/`forget` inside one computation. CRE gensym `DISREP`/value-cell writes on gensyms created in the iteration |
+| **T3: shared structure, needs a lock or per-thread copy** | correct only with synchronisation; cost depends on frequency | C: info-lists (`$values`, `$props`, `$functions`), factdb-nodes (`*nobjects*`, `dobjects`), rules (`*rule-symbol-pool*`), lisp-runtime (`*gensym-counter*`, needs to be atomic). B: `DATA` mutation of built-in constants and number nodes (`dintnum` rewiring the number chain). M: symbols interned in the iteration (package table; thread safety of SBCL `intern` **unverified**) |
+| **T4: breaks the frozen environment** | the loop body changes shared definitions; threads can't host it | A: definition indicators (`mprops`, `mexpr`, `operators`, `oldrules`, `opers`, parser properties). B: `MPROPS` mutation outside the funnel. C: parser tables (`macsyma-operators`). Persistent user facts: `assume`/`declare` not undone within the iteration |
+| **Unknown** | not yet categorised | C: uncategorised variables; anything else |
+
+**Conclusions:**
+
+| Steady-state profile of the loop body | Conclusion |
 |---|---|
-| Every write falls in a class doc 03 has a contained fix for: sign scratch, CRE gensyms, `block` bind/restore, caches | A frozen-environment thread mode is plausible for this workload |
-| Writes to user-symbol definitions or facts, or context switches, on common paths | Threads are ruled out for this workload; use processes |
-| Writes in many unrelated classes | Threads are ruled out, and the mailing-list question is settled with data |
+| Only T1 and T2 | Frozen-environment threads are **plausible** with contained fixes; the next step is prototyping those fixes |
+| T1–T3, with T3 at a low rate per iteration (T3 writes are a small share of the iteration's writes) | **Possible with locks**; the next step is measuring lock contention, since the write count is only a stand-in for time spent holding a lock |
+| Any T4, or T3 at a high rate | **Threads ruled out** for this workload; use processes |
+| Unknown writes above 5% of the steady-state total | **No conclusion** until they are categorised |
+
+The four mailing-list failure cases are a sanity check at this level. Each
+must show steady-state writes that explain its known failure (see the
+validation ladder below). A case that shows none means the instrument is
+blind there, and no conclusion is drawn until that is explained.
 
 A clear negative result counts as success. The facility has failed only if
 its answer can't be trusted.
