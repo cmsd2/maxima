@@ -97,7 +97,7 @@
 						      (otherwise nil))))
   (cond ((null name) aarray)
 	((symbolp name)
-	 (setf (symbol-array name) aarray)
+	 (putprop name aarray 'array)
 	 name)
 	(t (error "~S is illegal first arg for *array" name))))
 
