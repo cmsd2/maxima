@@ -57,7 +57,7 @@
 	  ((null (pointergp mvar var)) (cons var l))
 	  ((let ((newvar (gensym)))
 	     (setq genvar (append genvar (list newvar)))
-	     (setf (symbol-plist newvar) (symbol-plist var))
+	     (replace-symbol-plist newvar (symbol-plist var))
 	     (setf (symbol-value newvar) (1+ (symbol-value mvar)))
 	     (cons newvar (mapcar #'(lambda (p) (pvsubst newvar var p)) l)))))))
 
