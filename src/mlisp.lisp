@@ -883,7 +883,7 @@ wrapper for this."
   (putprop (caar z) (namesonly z) 'defstruct-template)
   ;; set the initialization
   (putprop (caar z) (initializersmostly z) 'defstruct-default)
-  (setf (get (caar z) 'dimension) 'dimension-defstruct)
+  (putprop (caar z) 'dimension-defstruct 'dimension)
   ;; Replace any entry for the same structure so that a redefinition does
   ;; not leave a stale duplicate behind (KILL only removes one entry).
   (setf $structures
@@ -891,8 +891,8 @@ wrapper for this."
               (append (remove (caar z) (cdr $structures)
                               :key #'caar :test #'eq :count 1)
                       (list (get (caar z) 'defstruct-default)))))
-  (setf (get (caar z) 'translate) 'defstruct-translate)
-  (setf (get (caar z) 'operators) 'simpstruct)
+  (putprop (caar z) 'defstruct-translate 'translate)
+  (putprop (caar z) 'simpstruct 'operators)
   (get (caar z) 'defstruct-default))
 
 ;;; SIMPSTRUCT is the general simplifier for all structures defined via DEFSTRUCT.
@@ -1626,7 +1626,7 @@ wrapper for this."
                       (when (member prop '(mexpr mmacro) :test #'eq)
                         (mremprop var 'mlexprp)
                         (mremprop var 'mfexprp)
-                        (remprop var 'lineinfo)
+                        (zl-remprop var 'lineinfo)
                         (if (mget var 'trace)
                           (macsyma-untrace var))))
               ((eq prop '$transfun)
@@ -2164,8 +2164,8 @@ wrapper for this."
 (defun set-lineinfo (fnname lineinfo body)
   (cond ((and (consp lineinfo) (eq 'src (third lineinfo)))
 	 (setf (cdddr lineinfo) (list fnname (first lineinfo)))
-	 (setf (get fnname 'lineinfo) body))
-	(t (remprop fnname 'lineinfo))))
+	 (putprop fnname body 'lineinfo))
+	(t (zl-remprop fnname 'lineinfo))))
 
 (defmspec mdefine (l )
   (let ($use_fast_arrays) ;;for mdefine's we allow use the oldstyle hasharrays
