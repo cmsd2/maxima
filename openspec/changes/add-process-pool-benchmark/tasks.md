@@ -50,7 +50,7 @@ before starting the next.
 
 ## 3. Stage C: the sweep
 
-- [ ] 3.1 Write the driver (`research/multithreading/tools/pool-bench.sh`),
+- [x] 3.1 Write the driver (`research/multithreading/tools/pool-bench.sh`),
   following design D5:
   - one fresh Maxima process per measurement;
   - a discarded warm-up round, then three timed rounds, rotating the order
@@ -62,9 +62,9 @@ before starting the next.
 
   Verify that a dry run with one repeat and two worker counts produces the
   expected records.
-- [ ] 3.2 Run the full sweep. Verify that every record is marked correct and
+- [x] 3.2 Run the full sweep. Verify that every record is marked correct and
   that the number of records matches the configuration count.
-- [ ] 3.3 **Gate C.** Report any failed or outlying runs, and total machine
+- [x] 3.3 **Gate C.** Report any failed or outlying runs, and total machine
   time. Stop for review.
 
 ## 4. Stage D: analysis and documentation

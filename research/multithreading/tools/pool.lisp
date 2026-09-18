@@ -52,7 +52,7 @@
 (defvar *pool-sequential-results* nil
   "Results of the last SEQ-RUN, in index order, for correctness checks.")
 
-(defun seq-run (fn n record-path &key (label "seq") (item-times t))
+(defun seq-run (fn n record-path &key (label "seq") (item-times t) extra)
   (let* ((gc0 (pool-gc-secs))
          (bytes0 (sb-ext:get-bytes-consed))
          (times '())
@@ -66,12 +66,14 @@
       (setq *pool-sequential-results* (coerce results 'list))
       (pool-append-record
        record-path
-       (list :kind "sequential" :label label :items n
+       (append
+        extra
+        (list :kind "sequential" :label label :items n
              :wall wall
              :gc (- (pool-gc-secs) gc0)
              :bytes_consed (- (sb-ext:get-bytes-consed) bytes0)
              :maxrss (pool-maxrss)
-             :item_times (and item-times (nreverse times))))
+             :item_times (and item-times (nreverse times)))))
       wall)))
 
 ;;; ------------------------------------------------------------ results I/O
@@ -187,7 +189,7 @@ results and a summary to OUT-PATH, then exit without unwinding."
 
 (defun pool-run (fn n p record-path
                  &key (mode :dynamic) (label "") expected fault
-                      (tmp-dir "/tmp/"))
+                      (tmp-dir "/tmp/") extra)
   "Fork P workers over items 0..N-1 of Maxima function FN.  MODE is :DYNAMIC
 (shared token pipe) or :STATIC (worker k takes indices = k mod P).
 EXPECTED, if given, is the list of sequential results to check against.
@@ -258,7 +260,9 @@ first-mismatch)."
                              (null mismatch))))
           (pool-append-record
            record-path
-           (list :kind "pool" :label label :mode (string-downcase mode)
+           (append
+            extra
+            (list :kind "pool" :label label :mode (string-downcase mode)
                  :workers p :items n
                  :wall (pool-secs (- t-read t0))
                  :t_fork (pool-secs (- t-forked t0))
@@ -268,5 +272,5 @@ first-mismatch)."
                  :first_mismatch mismatch :missing missing
                  :bad_exits bad-exits
                  :parent_maxrss (pool-maxrss)
-                 :worker_stats (reverse workers)))
+                 :worker_stats (reverse workers))))
           (values correct mismatch))))))
