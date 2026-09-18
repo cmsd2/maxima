@@ -257,8 +257,8 @@
   ;;conmark, conunmrk, conindex, connumber, and contexts
   ;;concern garbage-collectible contexts, and so we're
   ;;better off not resetting them.
-  (defprop $global 1 cmark) (defprop $initial 1 cmark)
-  (defprop $initial ($global) subc)
+  (putprop '$global 1 'cmark) (putprop '$initial 1 'cmark)
+  (putprop '$initial '($global) 'subc)
   (db-gc))
 
 (defun killcontext (x)
