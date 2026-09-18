@@ -14,6 +14,8 @@ that writes a property list without going through the observable funnel
 
 Each hit is classified by where it sits:
 
+  generated inside backquoted code in a function or macro: code that is
+            written out or evaluated later -- review by hand
   runtime   inside a function body (defun, defmfun, defmspec, lambda, flet,
             labels, def-simplifier, ...) -- these must go through the funnel
   macro     inside a defmacro/define-compiler-macro body -- review by hand
@@ -380,6 +382,12 @@ def scan_form(f, ctx, hits, where, quoted=False):
                              render(f)[:100]))
     if h == "REMPROP":
         hits.append((ctx, f.line, "remprop", where, render(f)[:100]))
+    # DEFPROP expands to (SETF (GET ...)).  At top level it runs at load
+    # time; inside a function it is a run-time write; inside backquoted
+    # code it is generated code (written to a file or evaluated later).
+    if h == "DEFPROP" and ctx != "toplevel":
+        hits.append(("generated" if quoted else ctx, f.line, "defprop",
+                     where, render(f)[:100]))
     if h in ("FUNCALL", "APPLY") and len(f) > 1 and is_setf_get_function(f[1]):
         hits.append((ctx, f.line, "funcall (setf get)", where,
                      render(f)[:100]))
@@ -450,7 +458,8 @@ def main():
     a = ap.parse_args()
     allow = load_allowlist(a.allowlist)
 
-    counts = {"runtime": 0, "macro": 0, "toplevel": 0, "allowed": 0}
+    counts = {"runtime": 0, "macro": 0, "generated": 0, "toplevel": 0,
+              "allowed": 0}
     rows = []
     for path in iter_files(a.paths):
         base = os.path.basename(path)
@@ -469,8 +478,10 @@ def main():
             print("%s:%d: %s: %s in (%s): %s" % (base, line, ctx, op, where,
                                                  snippet))
     sys.stderr.write("runtime %(runtime)d  macro %(macro)d  "
-                     "toplevel %(toplevel)d  allowed %(allowed)d\n" % counts)
-    sys.exit(1 if counts["runtime"] or counts["macro"] else 0)
+                     "generated %(generated)d  toplevel %(toplevel)d  "
+                     "allowed %(allowed)d\n" % counts)
+    sys.exit(1 if counts["runtime"] or counts["macro"] or counts["generated"]
+             else 0)
 
 
 if __name__ == "__main__":

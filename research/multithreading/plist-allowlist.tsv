@@ -3,3 +3,28 @@
 globals.lisp	defun putprop	funnel: the observable property-put path itself
 clmacs.lisp	defun zl-remprop	funnel: the observable property-remove path itself
 clmacs.lisp	defun replace-symbol-plist	funnel: the observable plist-replacement path itself
+optimize.lisp	defun proclaim-property	not built: disabled in maxima.system with #+(and nil gcl); GCL-only dead code
+optimize.lisp	defmacro definline	not built: disabled in maxima.system with #+(and nil gcl); GCL-only dead code
+clmacs.lisp	defmacro defprop	definer macro: every call site is top level, so its expansion runs at load time, before any hook (verified by call-site scan)
+commac.lisp	defmacro defun-maclisp	definer macro: every call site is top level, so its expansion runs at load time, before any hook (verified by call-site scan)
+commac.lisp	defmacro defun-prop	definer macro: every call site is top level, so its expansion runs at load time, before any hook (verified by call-site scan)
+defmfun-check.lisp	defmacro def-simplifier	definer macro: every call site is top level, so its expansion runs at load time, before any hook (verified by call-site scan)
+defmfun-check.lisp	defmacro defmfun	definer macro: every call site is top level, so its expansion runs at load time, before any hook (verified by call-site scan)
+displm.lisp	defmacro displa-def	definer macro: every call site is top level, so its expansion runs at load time, before any hook (verified by call-site scan)
+dskfn.lisp	defun dskary	generated code: DEFPROP written into save() output files; converting would change file contents
+lmdcls.lisp	defmacro declare-top	definer macro: every call site is top level, so its expansion runs at load time, before any hook (verified by call-site scan)
+mforma.lisp	defmacro +def-mformat-op	definer macro: every call site is top level, so its expansion runs at load time, before any hook (verified by call-site scan)
+mforma.lisp	defmacro +def-mformat-var	definer macro: every call site is top level, so its expansion runs at load time, before any hook (verified by call-site scan)
+mopers.lisp	defmacro defgrad	definer macro: every call site is top level, so its expansion runs at load time, before any hook (verified by call-site scan)
+mormac.lisp	defmacro macsyma-module	definer macro: every call site is top level, so its expansion runs at load time, before any hook (verified by call-site scan)
+nparse.lisp	defmacro def-collisions	definer macro: every call site is top level, so its expansion runs at load time, before any hook (verified by call-site scan)
+nparse.lisp	defmacro def-lbp	definer macro: every call site is top level, so its expansion runs at load time, before any hook (verified by call-site scan)
+nparse.lisp	defmacro def-lpos	definer macro: every call site is top level, so its expansion runs at load time, before any hook (verified by call-site scan)
+nparse.lisp	defmacro def-match	definer macro: every call site is top level, so its expansion runs at load time, before any hook (verified by call-site scan)
+nparse.lisp	defmacro def-mheader	definer macro: every call site is top level, so its expansion runs at load time, before any hook (verified by call-site scan)
+nparse.lisp	defmacro def-pos	definer macro: every call site is top level, so its expansion runs at load time, before any hook (verified by call-site scan)
+nparse.lisp	defmacro def-rbp	definer macro: every call site is top level, so its expansion runs at load time, before any hook (verified by call-site scan)
+nparse.lisp	defmacro def-rpos	definer macro: every call site is top level, so its expansion runs at load time, before any hook (verified by call-site scan)
+nset.lisp	defmacro def-nary	definer macro: every call site is top level, so its expansion runs at load time, before any hook (verified by call-site scan)
+transl.lisp	defun tr-mdefine-toplevel	generated code: DEFPROP emitted into translated code (translate/translate_file); converting would change translate_file output. Its run-time effect is the TRANSLATED writes left in class A
+trprop.lisp	defun meta-putprop	generated code: DEFPROP emitted into translate_file output in meta mode; converting would change file contents
