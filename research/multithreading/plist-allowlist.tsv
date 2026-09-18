@@ -2,3 +2,4 @@
 # Funnel functions: these ARE the observable path.
 globals.lisp	defun putprop	funnel: the observable property-put path itself
 clmacs.lisp	defun zl-remprop	funnel: the observable property-remove path itself
+clmacs.lisp	defun replace-symbol-plist	funnel: the observable plist-replacement path itself

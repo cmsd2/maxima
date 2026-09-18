@@ -123,6 +123,15 @@ without new warnings; the core suite still matches the baseline; and the
 oracle's unexplained count falls. A file whose count doesn't fall points to
 a pattern the scanner missed, and is investigated before going on.
 
+*Revised at gate C (agreed):* the full per-file gate (scanner, clean build,
+core suite, oracle class A count) applies to the large or sensitive files:
+`suprv1.lisp`, `transl.lisp`, `mlisp.lisp`, `mdebug.lisp`, `db.lisp` and
+`compar.lisp`. The remaining small files are converted one commit per file
+with the cheap checks (scanner, clean compile) per file, and the core suite
+and oracle run once per batch of about 10 files. If a batch's class A count
+doesn't fall as expected, bisect within the batch. The full gate would cost
+about 7 minutes of machine time per file, 4–5 hours in total.
+
 - [ ] 6.1 Convert run-time `(setf (get …))` sites on the worklist to
   `putprop`, checking each site's use of the return value. Verify each file
   against the per-file gate.
