@@ -298,11 +298,36 @@
   (cond ((symbolp sym) (get sym tag))
 	((consp sym) (getf (cdr sym) tag))))
 
+(defvar *environment-write-hook* nil
+  "NIL, or a function called before each observable write to the
+environment, as (FUNCALL HOOK OPERATION OBJECT INDICATOR VALUE):
+
+  :PUT            PUTPROP of VALUE under INDICATOR on OBJECT
+  :REMOVE         ZL-REMPROP of INDICATOR from OBJECT (VALUE is NIL)
+  :REPLACE-PLIST  REPLACE-SYMBOL-PLIST of OBJECT with VALUE (INDICATOR NIL)
+  :ASSIGN         MSET of Maxima variable OBJECT to VALUE (INDICATOR NIL)
+  :UNBIND         MSET or MUNBIND-MAKUNBOUND restoring OBJECT on exit
+                  from a binding; VALUE may be MUNBOUND (INDICATOR NIL)
+
+OBJECT is a symbol or a non-symbol fact-database node (X . PLIST).  The
+write happens only if the hook returns normally; to refuse it, signal an
+error with MERROR.  A hook must never refuse :UNBIND, since that would
+leave a binding frame half restored, and must not itself write the
+environment.")
+
 (defun zl-remprop (sym indicator)
+  (when *environment-write-hook*
+    (funcall *environment-write-hook* :remove sym indicator nil))
   (if (symbolp sym)
       (remprop sym indicator)
       (unless (atom sym)
         (remf (cdr sym) indicator))))
+
+(defun replace-symbol-plist (sym plist)
+  "Replace the whole property list of SYM with PLIST, observably."
+  (when *environment-write-hook*
+    (funcall *environment-write-hook* :replace-plist sym nil plist))
+  (setf (symbol-plist sym) plist))
 
 (defun getl (plist indicator-list )
   (cond ((symbolp plist)

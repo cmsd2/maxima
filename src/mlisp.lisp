@@ -584,6 +584,8 @@ wrapper for this."
   (values))
 
 (defun munbind-makunbound (var)
+  (when *environment-write-hook*
+    (funcall *environment-write-hook* :unbind var nil munbound))
   (makunbound var)
   (setf $values (delete var $values :count 1 :test #'eq)))
 
@@ -709,6 +711,9 @@ wrapper for this."
 			     (not (or mbindp munbindp))
 			     (member f '(neverset) :test #'eq)))
 		  (if (eq (funcall f x y) 'munbindp) (return nil))))
+	    (when *environment-write-hook*
+	      (funcall *environment-write-hook*
+		       (if munbindp :unbind :assign) x nil y))
             (let ((f (get x 'setter-method)))
               (when f
                 ;; There's a setter method defined.  Call it to set

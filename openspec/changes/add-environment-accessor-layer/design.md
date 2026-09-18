@@ -22,9 +22,11 @@ Current state of the write paths:
   `munbind` call `mset` (with `mbindp`/`munbindp` bound). Unbinding to
   "unbound" goes through `munbind-makunbound`, which calls `makunbound`
   directly.
-- **Build order:** `globals` is the first file in `src/maxima.system`, and
-  `clmacs` depends on it, so a special declared in `globals.lisp` is
-  declared before every user.
+- **Build order:** `globals` depends on `compatibility-macros1`, which
+  contains `clmacs`, so `clmacs.lisp` compiles first. (The first draft of
+  this design assumed the reverse; the stage B build caught it as
+  undefined-variable warnings.) A special used by both files must be
+  declared in `clmacs.lisp`.
 
 Constraints from AGENTS.md: minimal diffs that match the surrounding style,
 literal tabs preserved, no new `$` symbols, and a full suite run with share
@@ -64,8 +66,9 @@ call them, plus one new function for plist replacement.
 
 ### D2. Hook shape: one special variable holding a function or nil
 
-Declare `*environment-write-hook*` with `defvar` in `src/globals.lisp`,
-default nil. Funnels call
+Declare `*environment-write-hook*` with `defvar` in `src/clmacs.lisp`,
+default nil, since `clmacs.lisp` compiles before `globals.lisp` (see
+Context). Funnels call
 `(funcall *environment-write-hook* operation object indicator value)` before
 performing the write, where operation is one of `:put`, `:remove`,
 `:replace-plist`, `:assign`, `:unbind`.
@@ -92,8 +95,12 @@ for later barrier work.
 
 ### D4. Value assignment is observed in `mset` and `munbind-makunbound`
 
-`mset` calls the hook immediately before its final `(setf (symbol-value x) y)`,
-with operation `:assign`, or `:unbind` when `munbindp` is true.
+`mset` calls the hook with operation `:assign`, or `:unbind` when `munbindp`
+is true. The call sits after the `assign`-property check (which may itself
+refuse) but before the `setter-method` branch and the `add2lnc`
+bookkeeping on `$values`/`$myoptions`. A refused assignment therefore
+changes nothing, and assignments handled by a setter method are observed
+too.
 `munbind-makunbound` calls the hook with `:unbind` and the value `munbound`
 before `makunbound`.
 

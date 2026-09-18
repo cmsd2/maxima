@@ -173,7 +173,7 @@ def run_one(tree, path, hook, timeout):
     On timeout the whole process group is killed."""
     pre = ""
     if hook:
-        pre = ":lisp (load %s)\n" % lisp_string(hook)
+        pre = ":lisp (progn (load %s) (values))\n" % lisp_string(hook)
     batch = "%sdisplay2d:false$\nbatch(%s)$\n" % (pre, lisp_string(path))
     t0 = time.time()
     status = "ok"
@@ -278,6 +278,14 @@ GENERIC_MASKS = [
     (re.compile(r"/var/folders/[^\s\"]*/T/[^\s\",\]]*"), "<TMPFILE>"),
     (re.compile(r"\\\{[0-9A-Fa-f]{6,}\\\}"), "{#x}"),
     (re.compile(r"Runtime was\s+[0-9.]+\s+seconds"), "Runtime was <T> seconds"),
+    # Build identity differs legitimately between two builds.
+    (re.compile(r"branch_\d+_\d+_base_\d+_g[0-9a-f]+(_dirty)?"), "<VERSION>"),
+    (re.compile(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d"), "<DATETIME>"),
+    (re.compile(r"maxima\\?-(mt\\?-baseline|multithreading)"), "<TREE>"),
+    # Tests that print their own elapsed time with the idiom
+    # (time:absolute_real_time()-start,print(time),...).
+    (re.compile(r"(absolute_real_time\(\)-start,print\(time\).*\n)\d+ \n"),
+     "\\1<ELAPSED> \n"),
 ]
 
 

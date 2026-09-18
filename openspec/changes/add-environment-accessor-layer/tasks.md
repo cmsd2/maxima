@@ -57,26 +57,30 @@ this worktree changes.
 
 ## 4. Stage B: hook and funnels
 
-- [ ] 4.1 Declare `*environment-write-hook*` (default nil) in
-  `src/globals.lisp` before `putprop`, with a docstring giving the calling
+- [x] 4.1 Declare `*environment-write-hook*` (default nil) in
+  `src/clmacs.lisp` (compiled before `globals.lisp`, which uses it in
+  `putprop`), with a docstring giving the calling
   convention, the operation kinds and the rule that `:unbind` must not be
   refused. Verify after rebuilding that `:lisp (boundp
   'maxima::*environment-write-hook*)` returns T.
-- [ ] 4.2 Call the hook with `:put` in `putprop` before the write, for both
+- [x] 4.2 Call the hook with `:put` in `putprop` before the write, for both
   symbols and non-symbol nodes. Verify with an ad hoc hook in a
   `--batch-string` session that `f(x):=x^2` records a `:put` for `$f`.
-- [ ] 4.3 Call the hook with `:remove` in `zl-remprop` before the removal.
-  Verify ad hoc that `kill(f)` after a definition records a `:remove` or
-  `:replace-plist` for `$f`.
-- [ ] 4.4 Add the plist-replacement funnel function next to `zl-remprop` in
+- [x] 4.3 Call the hook with `:remove` in `zl-remprop` before the removal.
+  Verify ad hoc that `sign(x)` after `assume(x>0)` records `:remove` of
+  `+labs` (a `zl-remprop` caller in `db.lisp`). *Revised in stage B:*
+  `kill(f)` records nothing yet, because `kill` calls `remprop` directly in
+  `suprv1.lisp`; that check moves to task 6.2's per-file gate for
+  `suprv1.lisp`.
+- [x] 4.4 Add the plist-replacement funnel function next to `zl-remprop` in
   `src/clmacs.lisp`, calling the hook with `:replace-plist`. Verify that it
   compiles cleanly (no `caught WARNING` in the build log).
-- [ ] 4.5 Call the hook in `mset` before the final
+- [x] 4.5 Call the hook in `mset` before the final
   `(setf (symbol-value x) y)`, with `:assign`, or `:unbind` when `munbindp`
   is true. Call it in `munbind-makunbound` with `:unbind` and `munbound`.
   Verify ad hoc that `y:5` records `:assign`, and that `block([z:1],z+1)`
   records `:assign` then `:unbind` for `$z`.
-- [ ] 4.6 **Gate B.**
+- [x] 4.6 **Gate B.**
   - Run the full suite with no hook, and verify it matches the 1.3 baseline.
   - Run the differential corpus with no hook and with a passive hook, and
     verify both match the 2.3 baseline.
@@ -123,7 +127,9 @@ a pattern the scanner missed, and is investigated before going on.
   `putprop`, checking each site's use of the return value. Verify each file
   against the per-file gate.
 - [ ] 6.2 Convert run-time `remprop` sites to `zl-remprop`, checking return
-  value use. Verify each file against the per-file gate.
+  value use. Verify each file against the per-file gate; for `suprv1.lisp`,
+  also verify that `kill(f)` after a definition records `:remove` or
+  `:replace-plist` for `$f`.
 - [ ] 6.3 Convert run-time `(setf (symbol-plist …))` sites (`kill` in
   `suprv1.lisp`, `ordervar` in `nalgfa.lisp`, `sublis`, `hayat`) to the
   replacement funnel. Verify each file against the per-file gate.

@@ -309,6 +309,8 @@
 ;;       cannot be changed by the user.  This includes things like
 ;;       $%pi, $%e, $inf, $minf, $true, and $false.
 (defun putprop (sym val  indic)
+  (when *environment-write-hook*
+    (funcall *environment-write-hook* :put sym indic val))
   (if (consp sym)
       (setf (getf (cdr sym) indic) val)
       (setf (get sym indic) val)))
