@@ -251,7 +251,6 @@
   (dolist (sym *defgrad-syms*)
     (destructuring-bind (args &rest glist)
         (get sym 'grad)
-      (setf (get sym 'grad)
-            (list* args
+      (putprop sym (list* args
                    (mapcar #'meval*
-                           glist))))))
+                           glist)) 'grad))))
