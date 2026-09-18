@@ -86,7 +86,7 @@
   (cond ((arrayp val)
 	 (apply 'lispm-rearray val dims))
 	((arrayp (get ar 'array))
-	 (setf (get ar 'array) (apply 'lispm-rearray (get ar 'array) dims)))
+	 (putprop ar (apply 'lispm-rearray (get ar 'array) dims) 'array))
 	((setq marray-sym (mget ar 'array))
 	 (rearray-aux marray-sym nil dims)
 	 ar)
