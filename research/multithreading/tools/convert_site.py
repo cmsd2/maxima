@@ -9,6 +9,7 @@ rewrites it, preserving the source text of its arguments:
   (remprop A B)                 -> (zl-remprop A B)
   (setf (get A B) V)            -> (putprop A V B)
   (setf (symbol-plist A) V)     -> (replace-symbol-plist A V)
+  (setf (symbol-array A) V)     -> (putprop A V 'array)
 
 Only single-pair SETF forms are handled; anything else is reported and left
 alone.  Prints each rewrite.
@@ -16,7 +17,8 @@ alone.  Prints each rewrite.
 import re
 import sys
 
-OPEN = re.compile(r"\((remprop|setf \(get|setf \(symbol-plist)[\s(]", re.I)
+OPEN = re.compile(r"\((remprop|setf \(get|setf \(symbol-plist|setf \(symbol-array)[\s(]",
+                  re.I)
 
 
 def form_end(s, i):
@@ -101,6 +103,9 @@ def rewrite(form):
         return "(putprop %s %s %s)" % (pargs[1], val, pargs[2])
     if ph == "symbol-plist" and len(pargs) == 2:
         return "(replace-symbol-plist %s %s)" % (pargs[1], val)
+    if ph == "symbol-array" and len(pargs) == 2:
+        # SYMBOL-ARRAY is a macro for (GET sym 'ARRAY).
+        return "(putprop %s %s 'array)" % (pargs[1], val)
     raise ValueError("unsupported place %s" % place)
 
 

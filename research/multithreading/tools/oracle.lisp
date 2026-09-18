@@ -238,6 +238,7 @@ Differences are appended to OUTPUT-PATH."
                                        :if-exists :append
                                        :if-does-not-exist :create))
   (setq *environment-write-hook* #'oracle-hook)
+  (oracle-wrap-loads)
   (setf (fdefinition 'test-batch)
         (lambda (filename &rest args)
           (let ((*oracle-file* (file-namestring filename))
@@ -259,6 +260,59 @@ Differences are appended to OUTPUT-PATH."
                   (let ((*environment-write-hook* nil))
                     (oracle-step)))))))
   t)
+
+(defun oracle-around-load (label thunk)
+  "Attribute everything written while THUNK runs to a separate unit named
+load:LABEL, so package loading is not charged to the problem that
+triggered it."
+  (if (or (null *oracle-snapshot*) (null *oracle-out*))
+      (funcall thunk)
+      (let ((*environment-write-hook* nil))
+        (oracle-step)                   ; close the enclosing unit so far
+        (multiple-value-prog1
+            (let ((*oracle-file* (format nil "load:~A" label))
+                  (*environment-write-hook* #'oracle-hook))
+              (multiple-value-prog1 (funcall thunk)
+                (let ((*environment-write-hook* nil))
+                  (oracle-step))))))))
+
+(defun oracle-load-label (x)
+  (let ((p (cond ((pathnamep x) x)
+                 ((stringp x) (pathname x))
+                 ((and (consp x) (or (stringp (cdr x)) (pathnamep (cdr x))))
+                  (pathname (cdr x)))
+                 ((typep x 'file-stream) (pathname x))
+                 (t nil))))
+    (if p (file-namestring p) "?")))
+
+(defvar *oracle-original-loadfile* (fdefinition 'loadfile))
+(defvar *oracle-original-batchload-stream* (fdefinition 'batchload-stream))
+(defvar *oracle-original-generic-autoload* (fdefinition 'generic-autoload))
+(defvar *oracle-original-aload* (fdefinition 'aload))
+
+(defun oracle-wrap-loads ()
+  (setf (fdefinition 'loadfile)
+        (lambda (file &rest args)
+          (oracle-around-load (oracle-load-label file)
+                              (lambda () (apply *oracle-original-loadfile*
+                                                file args)))))
+  (setf (fdefinition 'batchload-stream)
+        (lambda (stream &rest args)
+          (oracle-around-load (oracle-load-label (or (getf args :truename)
+                                                     stream))
+                              (lambda () (apply *oracle-original-batchload-stream*
+                                                stream args)))))
+    ;; AUTOF/AUTOM stubs (autol.lisp) call ALOAD -> CL LOAD directly.
+  (setf (fdefinition 'aload)
+        (lambda (file &rest args)
+          (oracle-around-load (oracle-load-label file)
+                              (lambda () (apply *oracle-original-aload*
+                                                file args)))))
+  (setf (fdefinition 'generic-autoload)
+        (lambda (file &rest args)
+          (oracle-around-load (oracle-load-label file)
+                              (lambda () (apply *oracle-original-generic-autoload*
+                                                file args))))))
 
 (defun oracle-summary ()
   (format t "~&ORACLE ~S writes-observed ~D~%" *oracle-stats* *oracle-writes*)

@@ -292,11 +292,28 @@ def head(f):
     return f[0] if isinstance(f, Form) and f and isinstance(f[0], Sym) else None
 
 
+# Accessor macros whose expansion is a GET or SYMBOL-PLIST form, such as
+# (defmacro symbol-array (sym) `(get ,sym 'array)).  SETF of one of them is
+# a plist write.  Filled by COLLECT_PLACE_MACROS before scanning.
+PLACE_MACROS_FOUND = {}
+
+
+def collect_place_macros(forms):
+    for f in forms:
+        if head(f) == "DEFMACRO" and len(f) >= 4 and isinstance(f[1], Sym):
+            body = f[-1]
+            if (isinstance(body, Quoted) and body.kind == "`"
+                    and head(body.form) in PLIST_PLACES):
+                PLACE_MACROS_FOUND[f[1]] = head(body.form).lower()
+
+
 def place_kind(p):
     """Return a label if P is a plist place, else None."""
     h = head(p)
     if h in PLIST_PLACES:
         return h.lower()
+    if h in PLACE_MACROS_FOUND:
+        return "%s(%s)" % (h.lower(), PLACE_MACROS_FOUND[h])
     if h == "GETF" and len(p) > 1 and head(p[1]) in ("CDR", "SYMBOL-PLIST"):
         return "getf-" + head(p[1]).lower()
     return None
@@ -458,10 +475,23 @@ def main():
     a = ap.parse_args()
     allow = load_allowlist(a.allowlist)
 
+    files = list(iter_files(a.paths))
+    # Pre-pass: accessor macros are usually defined in other files than
+    # their uses, so always read all of src/ next to the scanned paths.
+    extra = set()
+    for pth in a.paths:
+        d = pth if os.path.isdir(pth) else os.path.dirname(pth)
+        extra.update(iter_files([d]))
+    for path in sorted(set(files) | extra):
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            try:
+                collect_place_macros(Reader(fh.read()).read_all())
+            except EOFError:
+                pass
     counts = {"runtime": 0, "macro": 0, "generated": 0, "toplevel": 0,
               "allowed": 0}
     rows = []
-    for path in iter_files(a.paths):
+    for path in files:
         base = os.path.basename(path)
         for ctx, line, op, where, snippet in scan_file(path):
             if ctx != "toplevel" and (base, where) in allow:
