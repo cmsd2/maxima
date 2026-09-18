@@ -91,12 +91,12 @@ this worktree changes.
 
 ## 5. Stage C: oracle and seeded bypasses, before any conversion
 
-- [ ] 5.1 Write the snapshot-diff oracle (design D9): a deep structural hash
+- [x] 5.1 Write the snapshot-diff oracle (design D9): a deep structural hash
   with a cycle guard over package symbols, `genvar` gensyms, database nodes
   and contexts, attributed per test problem. Verify on a hand-written case
   that an in-place `rplacd` on a stored property value is reported as
   unexplained.
-- [ ] 5.2 Write the seeded-bypass tests:
+- [x] 5.2 Write the seeded-bypass tests:
   - a direct `setf get` in a function body;
   - `funcall #'(setf get)`;
   - `rplacd` on a stored value;
@@ -104,15 +104,15 @@ this worktree changes.
 
   Verify that each is caught by the scanner, the oracle, or both, and that
   the test names any bypass neither caught.
-- [ ] 5.3 Draft the benign-churn list (labels, `$linenum`,
+- [x] 5.3 Draft the benign-churn list (labels, `$linenum`,
   `*last-meval1-form*`, …) and the expected unobserved classes (such as
   `data` lists mutated by `fdel`), each with a reason. Verify that each
   entry maps to benign churn or a documented unobserved class.
-- [ ] 5.4 Run the full suite with the oracle on, still with no conversions.
+- [x] 5.4 Run the full suite with the oracle on, still with no conversions.
   Save the unexplained differences grouped by indicator and file as the
   **gap report**. Verify that the report exists and gives the total
   unexplained count as the starting point for stage D.
-- [ ] 5.5 **Gate C.** Compare the gap report with the scanner worklist and
+- [x] 5.5 **Gate C.** Compare the gap report with the scanner worklist and
   with doc 03. Decide whether stage D is worth doing, given the size and
   spread of the gap. Stop for review.
 

@@ -1,0 +1,77 @@
+# variable (or re:regex)	category	reason
+# Every class C entry is a documented unobserved class: assignment to a Lisp
+# special outside MSET.  Categories group them for the gap report; "benign"
+# means benign for the oracle's attribution, NOT that the write is harmless
+# under concurrency.
+*STANDARD-OUTPUT*	driver-io	test driver redirects output per problem (benign)
+*STANDARD-INPUT*	driver-io	test driver input stream (benign)
+*QUERY-IO*	driver-io	test driver answer stream (benign)
+*STREAM-ALIST*	driver-io	file stream bookkeeping for batch/load (benign)
+*MREAD-PROMPT*	driver-io	reader prompt (benign)
+*PARSE-STRING-INPUT-STREAM*	driver-io	reader input stream (benign)
+*CURRENT-LINE-INFO*	driver-io	reader source position (benign)
+*PARSE-WINDOW*	driver-io	reader lookback buffer (benign)
+$%	repl-labels	last result (benign for attribution; shared REPL state)
+$LABELS	repl-labels	label list (shared REPL state)
+$LINENUM	repl-labels	input counter (shared REPL state)
+*LINELABEL*	repl-labels	current label (shared REPL state)
+re:^\$%[IO]\d+$	repl-labels	%iN/%oN label values (shared REPL state)
+*LAST-MEVAL1-FORM*	eval-trace	written on every function-call evaluation (doc 03)
+*MLAMBDA-CALL-STACK*	eval-trace	global adjustable vector pushed per call frame (doc 03)
+*$ERRORMSG-VALUE*	eval-trace	error message scratch set by MBIND
+$ERROR	eval-trace	MERROR does SETQ $ERROR (doc 03)
+*GENSYM-COUNTER*	lisp-runtime	Lisp gensym counter (shared, non-atomic)
++LABS	factdb-scratch	query label list, cleared on entry (doc 03)
+-LABS	factdb-scratch	query label list
+ULABS	factdb-scratch	query label list
+re:^[+-]S[ML]?$	factdb-scratch	query queue pointers
+*LABS*	factdb-scratch	query scratch
+*LPRS*	factdb-scratch	query scratch
+*MARKS*	factdb-scratch	query mark counter
+*DB*	factdb-scratch	query temp
+CURRENT	factdb-scratch	context last marked
+*NOBJECTS*	factdb-nodes	number-node chain, rewired by DINTNUM/DB-GC
+DOBJECTS	factdb-nodes	expression-node list
+$CONTEXTS	factdb-contexts	context registry
+CONTEXT	factdb-contexts	current context, SETQ'd by $SUPCONTEXT (doc 03)
+$CONTEXT	factdb-contexts	current context, SETQ'd by $SUPCONTEXT (doc 03)
+$PROPS	info-lists	destructive ADD2LNC (doc 03)
+$VALUES	info-lists	destructive ADD2LNC (doc 03)
+$FUNCTIONS	info-lists	destructive ADD2LNC (doc 03)
+$MYOPTIONS	info-lists	destructive ADD2LNC
+$RULES	info-lists	rule list
+$ARRAYS	info-lists	array list
+$DEPENDENCIES	info-lists	dependency list
+$MACROS	info-lists	macro list
+VARLIST	cre-pool	CRE variable list, SETQ'd per input and by $RAT (doc 03)
+GENVAR	cre-pool	CRE gensym pool, extended by ORDERPOINTER (doc 03)
+*BFLOAT-HEADER*	bigfloat-cache	BCONS header cache, unbound (doc 03)
+*BFLOAT-HEADER-PREC*	bigfloat-cache	BCONS header cache precision
+*BIGFLOATZERO*	bigfloat-cache	FPPREC1 constants
+*BIGFLOATONE*	bigfloat-cache	FPPREC1 constants
+*BFHALF*	bigfloat-cache	FPPREC1 constants
+*BFMHALF*	bigfloat-cache	FPPREC1 constants
+FPPREC	bigfloat-cache	Lisp-level precision set by FPPREC1
+$GENSUMNUM	name-counters	generated summation index counter
+$%RNUM	name-counters	%r constant counter
+$%RNUM_LIST	result-vars	solve result variable
+$MULTIPLICITIES	result-vars	solve result variable
+$PIECE	result-vars	part() result variable
+*RULE-SYMBOL-POOL*	rules	recycled rule symbols (June 2026 TLS fix)
+MACSYMA-OPERATORS	parser	operator table, changed by operator definitions
+SYMBOLS-DEFINED	parser	operator symbol list
+*CANCELLED	algorithm-scratch	unbound working variable
+*M	algorithm-scratch	unbound working variable
+XA*	algorithm-scratch	unbound working variable
+*COLINV*	algorithm-scratch	unbound working array (matrix code)
+*COL*	algorithm-scratch	unbound working array (matrix code)
+*ROW*	algorithm-scratch	unbound working array (matrix code)
+*MAT*	algorithm-scratch	unbound working array (matrix code)
+*JM*	algorithm-scratch	unbound working variable
+*MINOR1*	algorithm-scratch	unbound working variable
+*CHRPS*	algorithm-scratch	unbound working variable
+*ACURSOR*	algorithm-scratch	unbound working variable
+LIMK	algorithm-scratch	unbound working variable
+NN*	algorithm-scratch	working variable
+*PRIME	algorithm-scratch	modular arithmetic prime
+*ENVIRONMENT-WRITE-HOOK*	oracle-artefact	the oracle binds the hook off around its own snapshots
