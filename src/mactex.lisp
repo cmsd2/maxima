@@ -78,7 +78,7 @@
   (setq env-open ($sconcat env-open))
   (setq env-close ($sconcat env-close))
   (if (getopr x) (setq x (getopr x)))
-  (setf (get x 'tex-environment) `(,env-open . ,env-close))
+  (putprop x `(,env-open . ,env-close) 'tex-environment)
   ($get_tex_environment x))
 
 (defun get-tex-environment (x)
@@ -895,10 +895,10 @@
 (defun tex-setup (x)
   (let((a (car x))
        (b (cadr x)))
-    (setf (get a 'tex) 'tex-prefix)
-    (setf (get a 'texword) b)	;This means "sin" will always be roman
-    (setf (get a 'texsym) (list b))
-    (setf (get a 'tex-rbp) 130)))
+    (putprop a 'tex-prefix 'tex)
+    (putprop a b 'texword)	;This means "sin" will always be roman
+    (putprop a (list b) 'texsym)
+    (putprop a 130 'tex-rbp)))
 
 
 ;; I WONDER IF ALL BUILT-IN FUNCTIONS SHOULD BE SET IN ROMAN TYPE
@@ -1170,7 +1170,7 @@
                   (t (merror (intl:gettext "tex: function ~s returned something other than a string or 'false'.~%") ($sconcat ',f)))))
               ))
     (setf (symbol-function glue-f) (coerce `(lambda (x l r) ,f-body) 'function))
-    (setf (get op 'tex) glue-f))
+    (putprop op glue-f 'tex))
   f)
 
 ;; Convenience function to allow user to process expression X
