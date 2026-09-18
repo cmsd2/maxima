@@ -1943,11 +1943,10 @@ wrapper for this."
 		    (merror (intl:gettext "array: all dimensions must be integers."))))
 	     (setq diml (mapcar #'1+ diml))
 	     (setq new (if compp fun (gensym)))
-	     (setf (symbol-array new) 
-	           (make-array diml :initial-element (case compp
+	     (putprop new (make-array diml :initial-element (case compp
 	                                               (fixnum 0)
 	                                               (flonum 0.0)
-	                                               (otherwise munbound))))
+	                                               (otherwise munbound))) 'array)
 	     ;; A memoizing function needs MUNBOUND in the unset cells so
 	     ;; that ARRFIND calls the function. The arrays created above
 	     ;; are never specialized, so MUNBOUND can be stored even in
@@ -2057,7 +2056,7 @@ wrapper for this."
 		  (add2lnc fun $arrays)
 		  (setq ary (gensym))
 		  (mputprop fun ary 'hashar)
-		  (setf (symbol-array ary) (make-array 7 :initial-element nil))
+		  (putprop ary (make-array 7 :initial-element nil) 'array)
 		  (setf (aref (symbol-array ary) 0) 4)
 		  (setf (aref (symbol-array ary) 1) 0)
 		  (setf (aref (symbol-array ary) 2) (length (cdr l)))))
@@ -2112,7 +2111,7 @@ wrapper for this."
      (setq old (symbol-array (mget fun 'hashar)))
      (setq new (gensym))
      (mputprop fun new 'hashar)
-     (setf (symbol-array new) (make-array (+ n 3) :initial-element nil))
+     (putprop new (make-array (+ n 3) :initial-element nil) 'array)
      (setq new (symbol-array new))
      (setf (aref new 0) n)
      (setf (aref new 1) (aref old 1))
@@ -2215,7 +2214,7 @@ wrapper for this."
 	    (t
 	     (setq ary (gensym))
 	     (mputprop fnname ary 'hashar)
-	     (setf (symbol-array ary) (make-array 7 :initial-element nil))
+	     (putprop ary (make-array 7 :initial-element nil) 'array)
 	     (setf (aref (symbol-array ary) 0) 4)
 	     (setf (aref (symbol-array ary) 1) 0)
 	     (setf (aref (symbol-array ary) 2) (length subs))
