@@ -593,7 +593,7 @@
      ;;		   INDEXLIST (GET INDEXLIST 'array))
      (setq ax (get-array-pointer ax))
      (setq indexlist (get-array-pointer indexlist))
-     (setf (symbol-array *indx*) (make-array (1+ nm) :initial-element nil))
+     (putprop *indx* (make-array (1+ nm) :initial-element nil) 'array)
      (do ((i 1 (1+ i)))
 	 ((> i nm))
        (setf (aref *indx* i) (aref indexlist i)))
