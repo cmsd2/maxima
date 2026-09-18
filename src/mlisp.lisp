@@ -1943,10 +1943,12 @@ wrapper for this."
 		    (merror (intl:gettext "array: all dimensions must be integers."))))
 	     (setq diml (mapcar #'1+ diml))
 	     (setq new (if compp fun (gensym)))
-	     (putprop new (make-array diml :initial-element (case compp
-	                                               (fixnum 0)
-	                                               (flonum 0.0)
-	                                               (otherwise munbound))) 'array)
+	     (putprop new
+	              (make-array diml :initial-element (case compp
+	                                                  (fixnum 0)
+	                                                  (flonum 0.0)
+	                                                  (otherwise munbound)))
+	              'array)
 	     ;; A memoizing function needs MUNBOUND in the unset cells so
 	     ;; that ARRFIND calls the function. The arrays created above
 	     ;; are never specialized, so MUNBOUND can be stored even in
