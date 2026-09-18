@@ -462,9 +462,9 @@ APPLY means like APPLY.")
 	   (let* ((t-expr `((lambda) ((mlist) ,@a-args) ,body))
 		  (t-form
                    (let ((once (get name 'once-translated)))
-                     (setf (get name 'once-translated) t)
+                     (putprop name t 'once-translated)
                      (unwind-protect (tr-lambda t-expr)
-                       (setf (get name 'once-translated) once))))
+                       (putprop name once 'once-translated))))
 		  (desc-header
 		   `(,name ,(car t-form) ,(caar form)
 		     ,and-restp ,(eq kind 'array))))
@@ -501,8 +501,8 @@ APPLY means like APPLY.")
 				   (func 'mexpr)))
 			  out-forms)))
 	     ;;once a function has been translated we want to make sure mfunction-call is eliminated.
-	     (remprop (car desc-header) 'undefined-warnp)
-	     (setf (get (car desc-header) 'once-translated) "I was once translated")
+	     (zl-remprop (car desc-header) 'undefined-warnp)
+	     (putprop (car desc-header) "I was once translated" 'once-translated)
 	     `(progn
 		,@(nreverse out-forms)
 		(defmtrfun ,desc-header ,@(cdr (cdr t-form))))))
@@ -518,7 +518,7 @@ APPLY means like APPLY.")
      (cond (tr-abort
 	    (trfail name))
 	   (t
-	    (if delete-subr? (remprop name 'subr))
+	    (if delete-subr? (zl-remprop name 'subr))
 	    (if (mget name 'trace) (macsyma-untrace name))
 	    (if (not $savedef) (meval `(($remfunction) ,name)))
 	    (handler-case (eval lisp-def-form)
@@ -876,7 +876,7 @@ APPLY means like APPLY.")
   (setq fns (cdr fns))
   (loop for v in fns
 	when (or (symbolp v) (and (stringp v) (setq v ($verbify v))))
-	do (setf (get v 'once-translated) t)
+	do (putprop v t 'once-translated)
 	(pushnew v *declared-translated-functions*)
 	else do (merror (intl:gettext "declare_translated: arguments must be symbols or strings; found: ~:M") v)))
 
@@ -1436,13 +1436,13 @@ APPLY means like APPLY.")
   (if (get a 'tbind)
     (let ((my-slot (cdr (assoc a tstack))))
       (setf (tstack-slot-mode my-slot) b))
-    (setf (get a 'mode) b)))
+    (putprop a b 'mode)))
 
 #+gcl (defsetf tr-get-mode (a) (b)
  `(if (get ,a 'tbind)
     (let ((my-slot (cdr (assoc ,a tstack))))
       (setf (tstack-slot-mode my-slot) ,b))
-    (setf (get ,a 'mode) ,b)))
+    (putprop ,a ,b 'mode)))
 
 (defun tr-get-val-modes (a)
   (if (get a 'tbind)
@@ -1454,13 +1454,13 @@ APPLY means like APPLY.")
   (if (get a 'tbind)
     (let ((my-slot (cdr (assoc a tstack))))
       (setf (tstack-slot-val-modes my-slot) b))
-    (setf (get a 'val-modes) b)))
+    (putprop a b 'val-modes)))
 
 #+gcl (defsetf tr-get-val-modes (a) (b)
  `(if (get ,a 'tbind)
     (let ((my-slot (cdr (assoc ,a tstack))))
       (setf (tstack-slot-val-modes my-slot) ,b))
-    (setf (get ,a 'val-modes) ,b)))
+    (putprop ,a ,b 'val-modes)))
 
 (defun tr-get-special (a)
   (if (get a 'tbind)
@@ -1472,13 +1472,13 @@ APPLY means like APPLY.")
   (if (get a 'tbind)
     (let ((my-slot (cdr (assoc a tstack))))
       (setf (tstack-slot-special my-slot) b))
-    (setf (get a 'special) b)))
+    (putprop a b 'special)))
 
 #+gcl (defsetf tr-get-special (a) (b)
  `(if (get ,a 'tbind)
     (let ((my-slot (cdr (assoc ,a tstack))))
       (setf (tstack-slot-special my-slot) ,b))
-    (setf (get ,a 'special) ,b)))
+    (putprop ,a ,b 'special)))
 ;;;
 ;;; should be a macro (TBINDV <var-list> ... forms)
 ;;; so that TUNBIND is assured, and also so that the stupid ASSQ doesn't
@@ -1505,9 +1505,9 @@ APPLY means like APPLY.")
 		;; when code is MEVAL'd since there is no way to stack
 		;; the mode properties. Certainly nobody is willing
 		;; to hack MEVAL in JPG;MLISP
-		(remprop var 'val-modes)
-		(remprop var 'mode)
-		(remprop var 'special)))
+		(zl-remprop var 'val-modes)
+		(zl-remprop var 'mode)
+		(zl-remprop var 'special)))
 	 (putprop var var 'tbind)
 	 (if $tr_bind_mode_hook
 	     (let ((mode? (mapply $tr_bind_mode_hook
@@ -1536,7 +1536,7 @@ APPLY means like APPLY.")
   (if value
       (putprop name value key)
       (progn
-	(remprop name key)
+	(zl-remprop name key)
 	nil)))
 
 (defun tunbinds (l)
