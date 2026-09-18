@@ -222,7 +222,7 @@
 (defun put-mode (name mode type)
   (if (get name 'tbind)
       (setf (tr-get-val-modes name) (ass-eq-set mode (tr-get-val-modes name) type))
-      (setf (get name type) mode)))
+      (putprop name mode type)))
 
 (defun declarray (ar mode)
   (put-mode ar mode 'array-mode))
