@@ -76,7 +76,7 @@
 	    (mremprop rule '$rule)
 	    (mremprop rule '$ruletype)
 	    (mremprop rule 'ruleof)
-	    (remprop rule 'expr)
+	    (zl-remprop rule 'expr)
 	    (setq $rules (delete rule $rules :count 1 :test #'eq))
 	    (putprop-or-remprop rule othrulename 'expr)
 	    (if (eq (get op 'operators) rule)
@@ -88,7 +88,7 @@
 (defun putprop-or-remprop (x y z)
   (if y
     (putprop x y z)
-    (remprop x z)))
+    (zl-remprop x z)))
 
 (defun findbe (e)
   (cond ((equal e 1) '(1 . 0))
