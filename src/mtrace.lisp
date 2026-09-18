@@ -376,13 +376,13 @@
 	   (setf (trace-oldfun fun) (and (fboundp fun) (symbol-function (or (get fun 'impl-name) fun))))
 	   (setf (symbol-function (or (get fun 'impl-name) fun)) value))
 	  (t
-	   (setf (symbol-plist fun) `(,shadow ,value ,@(symbol-plist fun)))))))
+	   (replace-symbol-plist fun `(,shadow ,value ,@(symbol-plist fun)))))))
 
 (defun trace-unfshadow (fun type)
   ;; At this point, we know that FUN is traced.
   (cond ((and (eq type 'mexpr)
 	      (safe-get fun 'mfexpr))
-	 (remprop fun 'mfexpr))
+	 (zl-remprop fun 'mfexpr))
 	((member type '(expr subr) :test #'eq)
 	 (let ((oldf (trace-oldfun fun))
 	       (currentf (and (fboundp fun) (symbol-function (or (get fun 'impl-name) fun))))
@@ -395,7 +395,7 @@
 	   ;; Function has been redefined (e.g. by loading a Lisp file).
 	   ;; Don't restore the old definition.
 	   (mtell (intl:gettext "untrace: function ~@:M was redefined while traced; leaving new definition intact.~%") fun))))
-	(t (remprop fun (get! type 'shadow))
+	(t (zl-remprop fun (get! type 'shadow))
 	   (fmakunbound fun))))
 
 ;;--- trace-fsymeval :: find original function
