@@ -42,10 +42,10 @@
     `(eval-when
       (:compile-toplevel :load-toplevel :execute)
 
-      ,@(and (not array-flag) `((remprop ',name 'translate)))
-      ,@(and mode `((defprop ,name ,mode
-		      ,(cond (array-flag 'arrayfun-mode)
-			     (t 'function-mode)))))
+      ,@(and (not array-flag) `((zl-remprop ',name 'translate)))
+      ,@(and mode `((putprop ',name ',mode
+		      ',(cond (array-flag 'arrayfun-mode)
+			      (t 'function-mode)))))
       ,@(cond (array-flag
 	       ;; when loading in hashed array properties
 	       ;; most exist or be created. Other
