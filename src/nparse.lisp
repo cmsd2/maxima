@@ -145,7 +145,7 @@
 (defun tyi-parse-int (stream eof)
   (or *parse-window*
       (progn (setq *parse-window* (make-list 25))
-	     (setf (get '*parse-window* 'length) (length *parse-window*))
+	     (putprop '*parse-window* (length *parse-window*) 'length)
 	     (nconc *parse-window* *parse-window*)))
   (let ((tem (tyi stream eof)))
     (setf (car *parse-window*) tem *parse-window*
@@ -685,7 +685,7 @@
 (defun inherit-propl (op-to op-from getl)
   (let ((propl (getl op-from getl)))
     (if propl
-	(progn (remprop op-to (car propl))
+	(progn (zl-remprop op-to (car propl))
 	       (putprop op-to (cadr propl) (car propl)))
 	(inherit-propl op-to
 		       (maxima-error "has no ~a properties. ~a ~a" getl op-from 'wrng-type-arg)
@@ -1756,7 +1756,7 @@
       (undefine-symbol opr)
       (remopr opr)
       (rempropchk opr)
-      (mapc #'(lambda (x) (remprop op x))
+      (mapc #'(lambda (x) (zl-remprop op x))
    	  '(nud nud-expr nud-subr			; NUD info
   		     led led-expr led-subr		; LED info
   		     lbp rbp			; Binding power info
@@ -1764,7 +1764,7 @@
   		     grind dimension dissym	; Display info
   		     op			; Operator info
              verb))
-      (mapc #'(lambda (x) (remprop noun-form x))
+      (mapc #'(lambda (x) (zl-remprop noun-form x))
    	  '(dimension dissym lbp rbp noun))
       )))
 
