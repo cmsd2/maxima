@@ -807,7 +807,7 @@
   (unless (every #'dnum-live-p *nobjects*)
     ;; Take the chain down ...
     (dolist (dat (get 'global 'data)) (remov dat))
-    (remprop 'global 'data)
+    (zl-remprop 'global 'data)
     (setq *nobjects* (remove-if-not #'dnum-live-p *nobjects*))
     ;; ... and lay it again over what is left. *NOBJECTS* is sorted
     ;; descending, so linking each node to its successor reproduces both what
