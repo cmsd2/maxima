@@ -4689,7 +4689,7 @@ ignoring dummy variables and array indices."
              (log-simp-plus-or-minus-i (catch 'taylor-catch ($taylor texp var 0 $lhospitallim)))))
 	  ($killcontext cntx)
       (unless was-internal
-        (remprop var 'internal)))))     
+        (zl-remprop var 'internal)))))     
 
 ;; Given a Maxima expression e and a variable x, mrv-sign(e,x) returns the sign 
 ;; of e in a neighborhood of real infinity. The sign is encoded as -1 for 
@@ -4931,7 +4931,7 @@ ignoring dummy variables and array indices."
 
 ;; This should be moved to the jacobi function code. And likely, we should
 ;; set the reciprocal property for the other jacobi functions.
-(mapcar #'(lambda (q) (setf (get (car q) 'recip) (cdr q)))
+(mapcar #'(lambda (q) (putprop (car q) (cdr q) 'recip))
 '((%jacobi_nc . %jacobi_cn)
   (%jacobi_ns . %jacobi_sn)
   (%jacobi_cs . %jacobi_sc)
