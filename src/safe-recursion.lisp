@@ -43,11 +43,9 @@
 
     (unwind-protect
          (progn
-           (setf (get name 'current-recursion-args)
-                 (cons arg known-args))
+           (putprop name (cons arg known-args) 'current-recursion-args)
            (funcall thunk))
-      (setf (get name 'current-recursion-args)
-            (remove arg known-args)))))
+      (putprop name (remove arg known-args) 'current-recursion-args))))
 
 (defmacro with-safe-recursion (name arg &body body)
   `(call-with-safe-recursion ',name ,arg (lambda () ,@body)))
