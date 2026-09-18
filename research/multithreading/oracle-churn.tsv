@@ -75,3 +75,4 @@ LIMK	algorithm-scratch	unbound working variable
 NN*	algorithm-scratch	working variable
 *PRIME	algorithm-scratch	modular arithmetic prime
 *ENVIRONMENT-WRITE-HOOK*	oracle-artefact	the oracle binds the hook off around its own snapshots
+ANS	algorithm-scratch	Lisp special (declare-top in pois3.lisp, hayat.lisp, matcom-generated rules) setq without a binding on the evaluation path; the writer was not identified

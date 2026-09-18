@@ -1,0 +1,68 @@
+/* A copy of wc_systematic (share/contrib/wrstcse.mac) with one change:
+   ?oracle\-region\-step() at the start of each iteration of the outer
+   MAKELIST, the loop a parallel makelist would distribute. */
+wc_systematic_profiled(wc_x,[wc_valuespertol]):=block(
+    [
+        %wc_tols,
+        wc_tolnum,
+        wc_numoftols
+    ],
+    if wc_valuespertol=[] then wc_valuespertol:wc_defaultvaluespertol else wc_valuespertol:first(wc_valuespertol),
+    wc_x:%wc_merge_ewc_subtols(wc_x),
+    %wc_tols:%wc_tols(wc_x),
+    wc_numoftols:length(%wc_tols),
+    makelist(
+        (
+            ?oracle\-region\-step(),
+            subst(
+                (
+                    wc_tolnum:-1,
+                    makelist(
+                        (
+                            wc_tolnum:wc_tolnum+1,
+                            wc_tol=((floor(mod(wc_num/(wc_valuespertol^wc_tolnum),wc_valuespertol)))/
+                                (wc_valuespertol-1)*2-1)
+                        ),
+                        wc_tol,%wc_tols
+                    )
+                ),
+                wc_x
+            )
+        ),
+        wc_num,0,wc_valuespertol^wc_numoftols-1
+    )
+);
+
+/* The same, with the one change that makes the corner counter local to
+   each iteration: WC_TOLNUM is bound by a BLOCK inside the loop body
+   instead of being shared by the enclosing BLOCK. */
+wc_systematic_profiled_local(wc_x,[wc_valuespertol]):=block(
+    [
+        %wc_tols,
+        wc_tolnum,
+        wc_numoftols
+    ],
+    if wc_valuespertol=[] then wc_valuespertol:wc_defaultvaluespertol else wc_valuespertol:first(wc_valuespertol),
+    wc_x:%wc_merge_ewc_subtols(wc_x),
+    %wc_tols:%wc_tols(wc_x),
+    wc_numoftols:length(%wc_tols),
+    makelist(
+        (
+            ?oracle\-region\-step(),
+            subst(
+                block([wc_tolnum:-1],
+                    makelist(
+                        (
+                            wc_tolnum:wc_tolnum+1,
+                            wc_tol=((floor(mod(wc_num/(wc_valuespertol^wc_tolnum),wc_valuespertol)))/
+                                (wc_valuespertol-1)*2-1)
+                        ),
+                        wc_tol,%wc_tols
+                    )
+                ),
+                wc_x
+            )
+        ),
+        wc_num,0,wc_valuespertol^wc_numoftols-1
+    )
+);

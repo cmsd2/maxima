@@ -228,7 +228,7 @@ about 7 minutes of machine time per file, 4–5 hours in total.
   group M, use only steady-state writes (every iteration after the first),
   and place each write in a fix tier (T1 bind per thread, T2 per-query or
   per-thread structure, T3 lock, T4 breaks the frozen environment).
-- [ ] 11.2 Extend the oracle with a region mode (design D13): snapshot at
+- [x] 11.2 Extend the oracle with a region mode (design D13): snapshot at
   region entry and after each iteration of a marked loop, report
   differences per iteration with the hook's attribution, and have
   `gap_report.py` split the first iteration from the steady state and
@@ -237,10 +237,10 @@ about 7 minutes of machine time per file, 4–5 hours in total.
   `block`-local assignment gives T1; `y::i` of a fresh global gives T3
   (`$values` info list); `f(x):=…` inside the loop gives T4; an autoload
   happens in iteration 1 only.
-- [ ] 11.3 Profile the `wc_systematic` loop body and the four mailing-list
+- [x] 11.3 Profile the `wc_systematic` loop body and the four mailing-list
   failure cases, with the region marked. Verify that each failure case shows
   writes that explain its known failure, and treat any case that shows none
   as a blind spot to investigate before going further.
-- [ ] 11.4 Read the `wc_systematic` profile against the criteria from 11.1
+- [x] 11.4 Read the `wc_systematic` profile against the criteria from 11.1
   and record the conclusion in docs/multithreading/05. Verify that the
   conclusion cites the criterion it matched.

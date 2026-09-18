@@ -217,3 +217,81 @@ and part of 2. The change now also includes:
 5. A repeatability requirement (level 5).
 6. The level-6 decision criteria written in `docs/multithreading/` before
    any workload is measured.
+
+## Result of the level-6 measurement (stage F)
+
+Measured with the oracle's region mode: a snapshot per iteration plus every
+hook-observed write, classified by `tools/region_report.py`. The steady
+state is iterations 2 to second-to-last. The last iteration also carries the
+region's exit (the enclosing `makelist` and `block` restoring their
+bindings), a measurement artefact found while reading the first result and
+corrected before drawing conclusions. Per-region reports are in
+`research/multithreading/results/region-*.md`.
+
+### Sanity check: the four mailing-list failures
+
+Each case shows steady-state writes that explain its known failure, so the
+instrument is not blind to any of them.
+
+| Case | Steady state | Explanation |
+|---|---|---|
+| `concat('v,i)::i` (9544 of 10000) | T3 37.5%: fresh global assigned, symbol interned, `$VALUES` mutated | lost updates to the shared info list |
+| Parallel `limit(abs(x-i)/(x-i), x, i)` | T3 25%: facts filed on `$INITIAL`, `PRIN-INF` and number nodes; T2 70% | shared fact-database structure |
+| `block`-local Newton loop | T1 100%: bind/restore of `x_n`, `x_next`, `i` | shallow binding through the global value cell |
+| `wc_systematic` | T3 8.6%: `$WC_TOLNUM` assigned 5 times per iteration | a counter shared across iterations |
+
+### `wc_systematic`
+
+Workload: a two-stage voltage divider with 4 resistor tolerances (81
+corners), symbolic `U_In` under `assume(U_In>0)`. The region is the outer
+`makelist`, the loop a parallel makelist would distribute.
+
+| Tier | Steady writes per iteration | What they are |
+|---|---|---|
+| T1 | 21 | bind/restore of `wc_tol` and `wc_num`; specials such as `*last-meval1-form*`, `ans` |
+| T2 | 32 | fact-database query labels (`+LABS`) on `U_In`, from sign queries during simplification |
+| T3 | 5 | `wc_tolnum`, a local of `wc_systematic`'s outer `block` that every iteration increments |
+| T4 | 0 | |
+| Unknown | 0 | |
+
+**Criterion matched: "possible with locks"** (T1–T3, with T3 at 8.6% of
+steady writes). The criteria distinguish "low" from "high" T3 rates without
+giving a number. That gap doesn't affect the conclusion below, because the
+variant removes T3 entirely, but a future measurement with real T3 writes
+needs a threshold, ideally one based on lock hold time rather than write
+counts.
+
+The one T3 write is not Maxima's: it comes from how `wrstcse.mac` shares its
+corner counter across iterations. A one-line change that binds `wc_tolnum`
+inside each iteration returns **identical results** (81 of 81) and profiles
+as **T1 and T2 only**. That meets the **"plausible"** criterion.
+
+**Conclusion.** For this workload, a frozen-environment thread mode is
+**plausible**, given:
+
+1. **Maxima-level binding rebuilt on `progv`** (doc 03), so that `wc_tol`,
+   `wc_num` and other locals are per thread, plus thread-entry binding of
+   the specials the loop writes.
+2. **The fact database's query labels moved to a per-query table** (doc 03,
+   option ii), so sign queries during simplification stop writing labels
+   onto the shared `U_In`.
+3. **A warm-up iteration** before the parallel region, which absorbs the
+   first-iteration writes (autoload, caches).
+4. **The one-line change to `wrstcse.mac`** that makes `wc_tolnum` local to
+   each iteration.
+
+No steady-state write required a lock, and nothing changed a definition.
+
+### Limits of this result
+
+- **One input.** Other `wrstcse` inputs (`wc_mintypmax2tol`, `abs`,
+  functions whose sign needs facts) may reach code paths that file facts on
+  shared objects, which is T3, as the `limit` case shows.
+- **Unfingerprinted state.** The oracle doesn't fingerprint hash tables or
+  arrays held outside plists (memo tables, `*lambda-expr-funs*`), and it
+  misses transient special-variable writes that are restored to the same
+  value within an iteration. The fact database's query queue pointers are
+  of this kind; they are covered by the same T2 fix as the labels.
+- **Plausibility is not speedup.** Each iteration here is a small `subst`
+  and simplification. Whether threads beat a process pool for this workload
+  is the separate measurement planned in doc 02, and it has not been made.

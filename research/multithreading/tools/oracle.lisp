@@ -91,7 +91,8 @@ guards against cycles (the fact database contains cyclic lists)."
 (defvar *oracle-skip-value-symbols*
   '(*oracle-ids* *oracle-next-id* *oracle-log* *oracle-writes* *oracle-out*
     *oracle-file* *oracle-problem* *oracle-snapshot* *oracle-depth*
-    *oracle-stats* *oracle-skip-value-symbols*)
+    *oracle-stats* *oracle-skip-value-symbols*
+    *oracle-region* *oracle-region-iteration* *oracle-region-writes*)
   "Symbols whose value cell is not snapshotted: the oracle's own state.
 Benign churn is classified after the fact, not skipped here, so that the
 raw report stays complete.")
@@ -195,7 +196,8 @@ conses whose contents change, so EQUAL keys would not be found again.")
 (defvar *oracle-stats* (list :problems 0 :diffs 0 :unexplained 0 :writes 0))
 
 (defun oracle-object-kind (obj)
-  (cond ((consp obj) "node")
+  (cond ((and (consp obj) (null (car obj))) "mprops-cell")
+        ((consp obj) "node")
         ((null (symbol-package obj)) "gensym")
         (t "symbol")))
 
@@ -326,3 +328,74 @@ triggered it."
 (defun oracle-summary ()
   (format t "~&ORACLE ~S writes-observed ~D~%" *oracle-stats* *oracle-writes*)
   (when *oracle-out* (finish-output *oracle-out*)))
+
+;;; ------------------------------------------------------------ region mode
+;;; (design D13)  Profiles a marked region iteration by iteration.  Each
+;;; iteration contributes two kinds of record to *ORACLE-OUT*:
+;;;
+;;;   hook     every write the hook observed, transient ones included
+;;;            (a block local assigned and restored leaves no net change,
+;;;            but it is still a write to a shared value cell)
+;;;   oracle   net differences the hook did not explain (classes B, C, M
+;;;            and any unexplained A)
+;;;
+;;; Line format (TSV):
+;;;   region iteration source op-or-kind object-kind object indicator
+;;; Call (ORACLE-REGION-BEGIN label path), then (ORACLE-REGION-STEP) at the
+;;; start of every iteration and once after the last, then
+;;; (ORACLE-REGION-END).  From Maxima: ?oracle\-region\-step().
+
+(defvar *oracle-region* nil)
+(defvar *oracle-region-iteration* 0)
+(defvar *oracle-region-writes* '())
+
+(defun oracle-region-hook (op obj ind val)
+  (declare (ignore val))
+  (push (list op obj ind) *oracle-region-writes*)
+  (oracle-hook op obj ind nil))
+
+(defun oracle-region-emit (source kind obj ind)
+  (with-standard-io-syntax
+    (let ((*package* (find-package :maxima)))
+      (format *oracle-out* "~A~C~D~C~A~C~(~A~)~C~A~C~A~C~S~%"
+              *oracle-region* #\Tab *oracle-region-iteration* #\Tab
+              source #\Tab kind #\Tab (oracle-object-kind obj) #\Tab
+              (oracle-object-name obj) #\Tab ind))))
+
+(defun oracle-region-begin (label path)
+  (setq *oracle-out* (open path :direction :output :if-exists :supersede
+                                :if-does-not-exist :create)
+        *oracle-region* label
+        *oracle-region-iteration* 0
+        *oracle-region-writes* '())
+  (clrhash *oracle-log*)
+  (let ((*environment-write-hook* nil))
+    (setq *oracle-snapshot* (oracle-snapshot)))
+  (setq *environment-write-hook* #'oracle-region-hook)
+  t)
+
+(defun oracle-region-step ()
+  "Close the current iteration (if any) and start the next."
+  (let ((*environment-write-hook* nil))
+    (when (> *oracle-region-iteration* 0)
+      (dolist (w (reverse *oracle-region-writes*))
+        (destructuring-bind (op obj ind) w
+          (oracle-region-emit "hook" op obj ind)))
+      (let ((snap (oracle-snapshot)))
+        (dolist (d (oracle-diff *oracle-snapshot* snap))
+          (unless (oracle-explained-p d)
+            (oracle-region-emit "oracle" (first d) (second d) (third d))))
+        (setq *oracle-snapshot* snap)))
+    (unless (> *oracle-region-iteration* 0)
+      (setq *oracle-snapshot* (oracle-snapshot)))
+    (setq *oracle-region-writes* '())
+    (clrhash *oracle-log*)
+    (incf *oracle-region-iteration*))
+  t)
+
+(defun oracle-region-end ()
+  (setq *environment-write-hook* nil)
+  (finish-output *oracle-out*)
+  (close *oracle-out*)
+  (setq *oracle-out* nil *oracle-region* nil *oracle-snapshot* nil)
+  t)
