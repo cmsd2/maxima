@@ -70,7 +70,7 @@
       (setq x (mstring x)))
     ;; Make sure this gets done before exiting this frame.
     (defprop mexpt msz-mexpt grind)
-    (remprop 'mminus 'lbp))
+    (zl-remprop 'mminus 'lbp))
   
   ;; MSTRING returns a list of characters.   Now print them.
   (do ((c #.(char-int #\0)
