@@ -85,7 +85,7 @@
 
 ;; operators properties
 
-(mapc #'(lambda (x) (setf (get (first x) 'operators) (second x)))
+(mapc #'(lambda (x) (putprop (first x) (second x) 'operators))
       '((mplus simplus) (mtimes simptimes) (mncexpt simpncexpt)
 	(mminus simpmin)
 	(mfactorial simpfact)
