@@ -458,7 +458,7 @@
 (defun displine (exp)
   (let ($nolabels (tim 0))
     (elabel exp)
-    (cond ($dispflag (remprop *linelabel* 'nodisp)
+    (cond ($dispflag (zl-remprop *linelabel* 'nodisp)
 		     (setq tim (get-internal-run-time))
 		     (mterpri)
 		     (displa (list '(mlabel) *linelabel* exp))
