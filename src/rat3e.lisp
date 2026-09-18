@@ -485,22 +485,22 @@
   (and $ratwtlvl
        (mapc #'(lambda (v g)
 		 (setq v (assolike v *ratweights))
-		 (if v (putprop g v '$ratweight) (remprop g '$ratweight)))
+		 (if v (putprop g v '$ratweight) (zl-remprop g '$ratweight)))
 	     vl gl)))
 
 (defun ratsetup2 (vl gl)
   (when $algebraic
-    (mapc #'(lambda (g) (remprop g 'algord)) gl)
+    (mapc #'(lambda (g) (zl-remprop g 'algord)) gl)
     (mapl #'(lambda (v lg)
 	      (cond ((setq v (algpget (car v)))
 		     (algordset v lg) (putprop (car lg) v 'tellrat))
-		    (t (remprop (car lg) 'tellrat))))
+		    (t (zl-remprop (car lg) 'tellrat))))
 	  vl gl))
   (and $ratfac (let ($ratfac)
 		 (mapc #'(lambda (v g)
 			   (if (mplusp v)
 			       (putprop g (car (prep1 v)) 'unhacked)
-			       (remprop g 'unhacked)))
+			       (zl-remprop g 'unhacked)))
 		       vl gl))))
 
 (defun porder (p)
