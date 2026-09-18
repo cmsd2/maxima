@@ -83,7 +83,7 @@
     (setq fun (get fun prop))
     (unless (symbolp fun)
       (let ((gen (gensym)))
-	(setf (symbol-function gen) fun) (setf (get key prop) gen)
+	(setf (symbol-function gen) fun) (putprop key gen prop)
 	(setq fun gen)))
     (cond (fun
 	   (setq args (cons fun args))
@@ -201,9 +201,9 @@
 		    (vector-push (car te) *lineinfo-array-internal*)
 		    (walk-get-lineinfo body  *lineinfo-array-internal*)))
 	     (cond ((> (fill-pointer *lineinfo-array-internal*) 0)
-		    (setf (get fname 'lineinfo)
-			  (copy-seq *lineinfo-array-internal*)))
-		   (t (setf (get fname 'lineinfo) nil)))))))
+		    (putprop fname (copy-seq *lineinfo-array-internal*)
+			     'lineinfo))
+		   (t (putprop fname nil 'lineinfo)))))))
 
 (defun walk-get-lineinfo (form ar &aux (i 0) tem)
   (declare (type (vector t) ar) (fixnum i))
@@ -452,8 +452,8 @@
   (values))
 
 (defun def-break (keyword fun doc)
-  (setf (get keyword 'break-command) fun)
-  (and doc (setf (get keyword 'break-doc) doc)))
+  (putprop keyword fun 'break-command)
+  (and doc (putprop keyword doc 'break-doc)))
 
 (defun break-help (&optional key)
   (cond (key
@@ -580,7 +580,7 @@ Command      Description~%~
 	       (prog1 (length *break-points*)
 		 (vector-push-extend  nil *break-points*))))
   (let ((fun (bkpt-function bpt)))
-    (push at (get fun 'break-points)))
+    (putprop fun (cons at (get fun 'break-points)) 'break-points))
   (setf (aref *break-points* at) bpt)
   at)
 
@@ -617,9 +617,10 @@ Command      Description~%~
 		   (unless (car tem)
 		     (pop tem))	    ; disabled or already deleted bkpt
 		   (if tem 
-		       (setf (get (bkpt-function tem) 'break-points)
-		             (delete i 
-		                     (get (bkpt-function tem) 'break-points))))
+		       (putprop (bkpt-function tem)
+		                (delete i 
+		                        (get (bkpt-function tem) 'break-points))
+		                'break-points))
 		   nil)
 		  (:enable
 		   (if (eq (car tem) nil) (cdr tem) tem))
