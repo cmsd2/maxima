@@ -41,7 +41,7 @@
   (dolist (sym symbols)
     (makunbound sym)
     (fmakunbound sym)
-    (setf (symbol-plist sym) nil)
+    (replace-symbol-plist sym nil)
     (push sym *rule-symbol-pool*)))
 
 (defun proc-$matchdeclare (x)
