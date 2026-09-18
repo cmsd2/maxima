@@ -881,7 +881,7 @@ maxima [options] --batch-string='batch_answers_from_file:false; ...'
 ;; accessed by the simplifier to the front of the list (unless it's empty),
 ;; adding an explicit nil entry for absent properties.
 (defun optimize-symbol-plist (s)
-  (setf (symbol-plist s) (optimized-plist (symbol-plist s))))
+  (replace-symbol-plist s (optimized-plist (symbol-plist s))))
 
 ;;; Now that all of maxima has been loaded, define the various lists
 ;;; and hashtables of builtin symbols and values.
