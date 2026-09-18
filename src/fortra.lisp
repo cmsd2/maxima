@@ -59,17 +59,17 @@
   ;; modified for MSTRING to generate using Fortran syntax.  This must be
   ;; undone so as not to modify the toplevel behavior of MSTRING.
   (unwind-protect
-       (defprop mexpt msize-infix grind)
-    (defprop mminus 100. lbp)
+       (putprop 'mexpt 'msize-infix 'grind)
+    (putprop 'mminus 100. 'lbp)
      
-    (defprop msetq (#\:) strsym)  
+    (putprop 'msetq '(#\:) 'strsym)  
     (let ((*fortran-print* t)
 	  (*read-default-float-format* 'single-float))
       ;; The above makes sure we an exponent marker for Fortran
       ;; numbers.
       (setq x (mstring x)))
     ;; Make sure this gets done before exiting this frame.
-    (defprop mexpt msz-mexpt grind)
+    (putprop 'mexpt 'msz-mexpt 'grind)
     (zl-remprop 'mminus 'lbp))
   
   ;; MSTRING returns a list of characters.   Now print them.
