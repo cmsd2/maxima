@@ -1,0 +1,55 @@
+/* Workload for the process-pool benchmark (add-process-pool-benchmark).
+
+   A voltage-divider chain: k stages, each dividing by R_(2j)/(R_(2j-1)+R_(2j)),
+   so n = 2k resistor tolerances.  The input voltage U_In stays symbolic under
+   assume(U_In>0), as in wrstcse.dem.
+
+   wc_setup(n) does wc_systematic's per-call setup once (merge subtolerances,
+   collect the tolerance list) and sets wc_n_items; wc_item(i) computes corner
+   i exactly as wc_systematic's outer MAKELIST body does, with the corner
+   counter bound per item (the stage F one-line change; results identical).
+   makelist(wc_item(i), i, 0, wc_n_items-1) equals wc_systematic(wc_chain(n)).
+
+   Workload sizes (task 1.3, chosen at gate A): 10 and 12 tolerances,
+   59,049 and 531,441 corners.  Measured sequentially on the M4: per-item mean
+   40 us at 6 tolerances, 70 us at 8, 113 us at 10 (coefficient of variation
+   up to 3.6, from GC pauses landing on single items); GC 1.5-3% of run time.
+   The originally planned 6 and 8 tolerances ran in 0.03 s and 0.46 s, too
+   short to time a pool against.  Items are fine-grained (about 0.1-0.2 ms),
+   so fork and result-transfer overhead is part of what the benchmark
+   measures. */
+
+load("wrstcse")$
+ratprint:false$
+assume(U_In>0)$
+
+wc_base_values:[10e3, 1e3, 4.7e3, 2.2e3, 3.3e3, 1.5e3, 6.8e3, 1.2e3, 8.2e3, 2.7e3, 5.6e3, 3.9e3]$
+
+wc_chain(n):=block([k:n/2, e:U_In, vals:[]],
+    if not integerp(k) or k<1 or n>length(wc_base_values) then
+        error("wc_chain: n must be even and at most", length(wc_base_values)),
+    for j:1 thru k do
+        e:e*R[2*j]/(R[2*j-1]+R[2*j]),
+    vals:makelist(R[m]=wc_base_values[m]*(1+.01*tol[m]), m, 1, n),
+    subst(vals, e))$
+
+wc_setup(n):=(
+    wc_expr_m:%wc_merge_ewc_subtols(wc_chain(n)),
+    wc_tols_m:%wc_tols(wc_expr_m),
+    wc_vpt:wc_defaultvaluespertol,
+    wc_n_items:wc_vpt^length(wc_tols_m))$
+
+wc_item(wc_num):=
+    subst(
+        block([wc_tolnum:-1],
+            makelist(
+                (
+                    wc_tolnum:wc_tolnum+1,
+                    wc_tol=((floor(mod(wc_num/(wc_vpt^wc_tolnum),wc_vpt)))/
+                        (wc_vpt-1)*2-1)
+                ),
+                wc_tol,wc_tols_m
+            )
+        ),
+        wc_expr_m
+    )$
