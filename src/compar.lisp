@@ -270,7 +270,7 @@
 	((eq x '$global) nil)
 	((eq x '$initial)
 	 (mapc #'remov (zl-get '$initial 'data))
-	 (remprop '$initial 'data)
+	 (zl-remprop '$initial 'data)
 	 t)
 	((and (not (eq $context x)) (contextmark) (< 0 (zl-get x 'cmark)))
 	 (mtell (intl:gettext "killcontext: context ~M is currently active.") x)
