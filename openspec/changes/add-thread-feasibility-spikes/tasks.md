@@ -3,22 +3,30 @@ before starting the next. No stage changes `src/` or `share/`.
 
 ## 1. Stage A: calibration
 
-- [ ] 1.1 Measure the reference allocation profile. Run `wc_systematic` at
+- [x] 1.1 Measure the reference allocation profile. Run `wc_systematic` at
   10 tolerances in a built image, recording bytes consed, wall time, GC run
   time, and `sb-ext:generation-number-of-gcs` for generations 0–2 before and
   after. Verify the rate lands near the 0.76 GB/s measured at 12 tolerances;
-  record both.
-- [ ] 1.2 Write the allocator (`research/multithreading/tools/gcspike.lisp`):
+  record both. *Result:* 0.78 GB/s at 10 tolerances, 0.74 GB/s at 12;
+  20 collections per GB, GC 1.2-1.3%, pause 0.8-0.9 ms, survival 0.04%.
+  `generation-number-of-gcs` resets on collection and under-counts by
+  three orders of magnitude; an `*after-gc-hooks*` hook replaced it.
+- [x] 1.2 Write the allocator (`research/multithreading/tools/gcspike.lisp`):
   nested list structures two to three deep, a per-thread ring buffer
   retaining a configurable survival fraction, and a size knob. It must
   return a checksum the harness verifies, so the work cannot be optimised
   away.
-- [ ] 1.3 Calibrate. In one thread, tune the size knob until the measured
+- [x] 1.3 Calibrate. In one thread, tune the size knob until the measured
   rate is within 20% of 0.76 GB/s, and the survival fraction until
   collections per generation match 1.1's ratios. Record the settings and
-  the achieved numbers in the file header.
-- [ ] 1.4 **Gate A.** Report achieved allocation rate, GC share and
+  the achieved numbers in the file header. *Result:* `:depth 2 :width 3
+  :walks 9 :retain-every 512 :ring-size 4096` gives 0.78 GB/s, 20
+  collections per GB, GC 1.17%, pause 0.75 ms. Survival cannot be matched
+  at the same time as the pause (page-granularity floor); GC cost was
+  preferred, with the survival-matched config kept as a sensitivity check.
+- [x] 1.4 **Gate A.** Report achieved allocation rate, GC share and
   generation ratios against the Maxima reference. Stop for review.
+  *Report:* `research/multithreading/results/gcspike-stage-a.md`.
 
 ## 2. Stage B: spike A, GC scaling
 
