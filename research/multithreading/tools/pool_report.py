@@ -12,7 +12,9 @@ failed runs (reporting them), and prints a markdown report:
   - memory: parent and per-worker peak RSS, summed total, heap growth
   - overheads: fork, wait, read; worker busy-time spread (imbalance)
   - Universal Scalability Law fit, C(p) = p / (1 + s(p-1) + k p(p-1)),
-    over p <= pcores and over the full curve
+    over p <= pcores and over the full curve.  Capacity is relative to the
+    pool at one worker (the law assumes C(1) = 1); the speedup column stays
+    relative to the sequential run.
 """
 import argparse
 import json
@@ -47,6 +49,13 @@ def fit_usl(ps, cs):
     else:
         s = (b1 * a22 - b2 * a12) / det
         k = (a11 * b2 - a12 * b1) / det
+    if k < 0:
+        # A negative coherency term is physically meaningless: there is no
+        # measurable cross-worker cost in this range.  Refit with k = 0,
+        # which reduces the USL to Amdahl's law.
+        k = 0.0
+        a = sum(v * v for v in x1)
+        s = (sum(u * v for u, v in zip(x1, y)) / a) if a else 0.0
     res = math.sqrt(sum((usl(p, s, k) - c) ** 2 for p, c in zip(ps, cs))
                     / len(ps))
     return s, k, res
@@ -142,6 +151,11 @@ def main():
                   "| Fork | Read | Write/worker | Busy spread | Peak RSS/worker "
                   "| Sum RSS (upper bound) |")
             print("|---|---|---|---|---|---|---|---|---|---|---|")
+            # Capacity for the USL is relative to the pool's own one-worker
+            # time: the law assumes C(1) = 1.  Speedup in the table stays
+            # relative to the sequential run, which the pool's overhead makes
+            # slightly less than 1 at p = 1.
+            one = med([r["wall"] for r in pool if r["workers"] == 1]) or base
             ps, cs = [], []
             for p in sorted({r["workers"] for r in pool}):
                 rs = [r for r in pool if r["workers"] == p]
@@ -149,7 +163,7 @@ def main():
                 mw = med(w)
                 sp = base / mw
                 ps.append(p)
-                cs.append(sp)
+                cs.append(one / mw)
                 busy = [med([x["busy"] for x in r["worker_stats"]]) for r in rs]
                 bspread = med([spread([x["busy"] for x in r["worker_stats"]])
                                for r in rs])
@@ -178,8 +192,9 @@ def main():
                                         [cs[i] for i in sel])
                     pk = usl_peak(s, k)
                     usable = k >= 0 and s >= 0 and res <= 0.1
-                    print("USL over %s: σ = %.4f, κ = %.5f, rms residual "
-                          "%.3f%s%s\n" % (label, s, k, res,
+                    note = " (κ constrained to 0: Amdahl)" if k == 0 else ""
+                    print("USL over %s: σ = %.4f, κ = %.5f%s, rms residual "
+                          "%.3f%s%s\n" % (label, s, k, note, res,
                                           ", throughput peaks at p ≈ %.1f" % pk
                                           if pk and usable else "",
                                           "" if usable else
