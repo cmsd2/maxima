@@ -69,7 +69,7 @@ before starting the next.
 
 ## 4. Stage D: analysis and documentation
 
-- [ ] 4.1 Write `pool_report.py`:
+- [x] 4.1 Write `pool_report.py`:
   - per-configuration medians and spreads, speedup and efficiency;
   - memory per worker and total;
   - worker busy-time spread (imbalance) for both modes;
@@ -79,15 +79,20 @@ before starting the next.
 
   Verify on synthetic records with known σ and κ that the fit recovers them
   to within 5%.
-- [ ] 4.2 Generate the report from the sweep. Verify that it contains every
+- [x] 4.2 Generate the report from the sweep. Verify that it contains every
   section the spec requires, and states that there is no thread arm and
   why.
-- [ ] 4.3 Rerun a subset (sequential, *p* = 4 and *p* = 10, dynamic, larger
+- [x] 4.3 Rerun a subset (sequential, *p* = 4 and *p* = 10, dynamic, larger
   workload) as a reproducibility check. Verify that the medians agree
   within the reported spread (spec "Rerun on the same machine").
-- [ ] 4.4 Write `docs/multithreading/07-process-pool-baseline.md` with the
+  *Result:* first rerun (load average 8–10) not met for *p* = 10 (16.85 s
+  against 19.52 s, spread 2.06 s). Second rerun (load average 4 at start)
+  met for all three: sequential 69.90 s, *p* = 4 23.90 s, *p* = 10 18.64 s.
+  The pass partly reflects wide spreads (sequential 9.1 s, *p* = 10 4.6 s);
+  across the three measurements the *p* = 10 median varies by about ±8%.
+- [x] 4.4 Write `docs/multithreading/07-process-pool-baseline.md` with the
   results and the machine description. Update doc 02's model with the
   measured parameters (f_gc, per-item CV, fork and transfer overheads, USL
   σ and κ). Verify that both documents cite the result files.
-- [ ] 4.5 **Gate D.** Summarise what the process curve means for the thread
+- [x] 4.5 **Gate D.** Summarise what the process curve means for the thread
   decision: the speedup and memory a thread mode would have to beat.

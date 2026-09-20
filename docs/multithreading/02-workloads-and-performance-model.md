@@ -5,8 +5,10 @@ benefit from parallelism, what limits them, and how to decide where effort
 pays off. The mailing-list background is in
 [01-mailing-list-discussion.md](01-mailing-list-discussion.md).
 
-Everything here is analysis and has not been measured yet. The numbers in
-the examples are illustrations, not results.
+Most of this is analysis; the numbers in the examples are illustrations,
+not results. The model's parameters for `wc_systematic` were later measured
+by the process-pool benchmark: see "Measured parameters" at the end and
+[07-process-pool-baseline.md](07-process-pool-baseline.md).
 
 ## Candidate workloads
 
@@ -219,3 +221,28 @@ single speedup ratio.
 6. Compare the predicted thread ceiling (from f_gc) with the process-farm
    curve. If the process farm already beats the thread ceiling, the
    threading question is closed for this workload.
+
+## Measured parameters (added after the process-pool benchmark)
+
+The process-pool benchmark (doc 07) measured the model's parameters for
+`wc_systematic` on a voltage-divider chain (10 and 12 tolerances, Apple M4
+with 4 performance and 6 efficiency cores, loaded desktop machine). Data:
+`research/multithreading/results/pool-final.jsonl`.
+
+| Parameter | Measured | Note |
+|---|---|---|
+| w (per item, excluding GC) | 94–135 µs | grows with expression size; items are fine-grained |
+| f_gc | 1.7–1.8% | GC-only thread ceiling 1/f_gc ≈ 55×: GC does not limit this workload |
+| CV of item time | 0.8–3.7 | from GC pauses on single items, not work variation |
+| r (staging gain) | not measured | outside this benchmark's scope |
+| Fork cost | 20–65 ms per worker, serialised | 0.66 s for 10 workers |
+| Result transfer | ≈ 0.6 s read + ≈ 0.6 s write per worker for 531,441 results | about 1 µs per result each way |
+| Memory per worker | 83–156 MB peak RSS (upper bound, includes shared pages) | the 8 GB concern does not arise at this size |
+| USL, *p* ≤ 4 (12 tol., static) | σ = 0.013, κ = 0.023 | good fit (residual 0.02) |
+| USL, all *p* (12 tol., static) | σ = 0.081, κ = 0.007 | throughput peak predicted near 11 workers |
+
+The measured process speedup is about 3.0× at 4 workers and up to 4.3× at
+10 (12 tolerances, static). Above 4 workers the numbers were not
+reproducible within their spread on this machine, so they are indicative
+only. The exponential-work argument above still dominates: on this curve,
+10 workers buy log₃(4.3) ≈ 1.3 extra tolerances.

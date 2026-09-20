@@ -139,8 +139,9 @@ def main():
                 continue
             print("### %s scheduling\n" % mode.capitalize())
             print("| Workers | Median wall | Spread | Speedup | Efficiency "
-                  "| Fork | Busy spread | Peak RSS/worker | Sum RSS | Heap growth/worker |")
-            print("|---|---|---|---|---|---|---|---|---|---|")
+                  "| Fork | Read | Write/worker | Busy spread | Peak RSS/worker "
+                  "| Sum RSS (upper bound) |")
+            print("|---|---|---|---|---|---|---|---|---|---|---|")
             ps, cs = [], []
             for p in sorted({r["workers"] for r in pool}):
                 rs = [r for r in pool if r["workers"] == p]
@@ -156,14 +157,19 @@ def main():
                            for r in rs])
                 srss = med([sum(x["maxrss"] for x in r["worker_stats"])
                             + r["parent_maxrss"] for r in rs])
-                heap = med([max(x["heap_growth"] for x in r["worker_stats"])
-                            for r in rs])
+                write = med([med([x["write"] for x in r["worker_stats"]])
+                             for r in rs])
                 print("| %d%s | %.2f s | %.2f | %.2f× | %.0f%% | %.2f s | %.2f s "
-                      "| %d MB | %d MB | %d MB |" % (
+                      "| %.2f s | %.2f s | %d MB | %d MB |" % (
                           p, "*" if p > a.pcores else "", mw, spread(w), sp,
                           100 * sp / p, med([r["t_fork"] for r in rs]),
-                          bspread, rss // 2**20, srss // 2**20, heap // 2**20))
-            print("\n\\* above the %d performance cores.\n" % a.pcores)
+                          med([r["t_read"] for r in rs]), write,
+                          bspread, rss // 2**20, srss // 2**20))
+            print("\n\\* above the %d performance cores. Fork: time to fork "
+                  "all workers, serialised in the parent. Read: parent reading "
+                  "and parsing results. Write: median per-worker time printing "
+                  "results. Sum RSS counts pages shared with the parent after "
+                  "fork in every worker, so it is an upper bound.\n" % a.pcores)
             for label, sel in (("p ≤ %d" % a.pcores,
                                 [i for i, p in enumerate(ps) if p <= a.pcores]),
                                ("all p", list(range(len(ps))))):
@@ -171,10 +177,14 @@ def main():
                     s, k, res = fit_usl([ps[i] for i in sel],
                                         [cs[i] for i in sel])
                     pk = usl_peak(s, k)
+                    usable = k >= 0 and s >= 0 and res <= 0.1
                     print("USL over %s: σ = %.4f, κ = %.5f, rms residual "
-                          "%.3f%s\n" % (label, s, k, res,
-                                        ", throughput peaks at p ≈ %.1f" % pk
-                                        if pk else ""))
+                          "%.3f%s%s\n" % (label, s, k, res,
+                                          ", throughput peaks at p ≈ %.1f" % pk
+                                          if pk and usable else "",
+                                          "" if usable else
+                                          " — **not a usable fit** (negative "
+                                          "parameter or residual > 0.1)"))
 
 
 if __name__ == "__main__":

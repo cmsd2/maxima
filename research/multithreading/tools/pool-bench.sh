@@ -58,7 +58,8 @@ while [ $r -le "$ROUNDS" ]; do
   done
   for c in $head $tail; do
     n=${c%%:*}; rest=${c#*:}; m=${rest%%:*}; p=${rest#*:}
-    extra="(list :round $r :warmup $( [ $r -eq 0 ] && echo t || echo nil ) :tolerances $n :started \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" :commit \"$commit\" :sbcl \"$sbcl\" :cores \"$cores\" :memsize $mem :cpu \"$cpu\")"
+    load1=$(sysctl -n vm.loadavg | awk '{print $2}')
+    extra="(list :load1 $load1 :round $r :warmup $( [ $r -eq 0 ] && echo t || echo nil ) :tolerances $n :started \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" :commit \"$commit\" :sbcl \"$sbcl\" :cores \"$cores\" :memsize $mem :cpu \"$cpu\")"
     if [ "$m" = seq ]; then
       maxima_run "(maxima::seq-run '\$wc_item \$wc_n_items \"$OUT\" :label \"t$n\" :extra $extra)" $n
     else
