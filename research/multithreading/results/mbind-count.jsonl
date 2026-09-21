@@ -1,0 +1,4 @@
+{"label":"wc10-counted","kind":"mbind-count","calls":1299078,"vars":1299078,"vars_per_call":1.000000,"wall":4.635134,"calls_per_second":280267.625488}
+{"label":"wc10-plain","kind":"wall-only","wall":4.650503}
+{"label":"suite-counted","kind":"mbind-count","calls":2352130,"vars":3883458,"vars_per_call":1.651039,"wall":41.845780,"calls_per_second":56209.491136}
+{"label":"suite-plain","kind":"wall-only","wall":42.469852}

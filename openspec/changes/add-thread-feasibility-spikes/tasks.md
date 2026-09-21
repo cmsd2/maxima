@@ -63,23 +63,30 @@ before starting the next. No stage changes `src/` or `share/`.
 
 ## 3. Stage C: spike B, binding cost
 
-- [ ] 3.1 Write the microbenchmark
+- [x] 3.1 Write the microbenchmark
   (`research/multithreading/tools/progv-bench.lisp`): a `progv` arm and a
   baseline arm reproducing `mbind-doit`'s read, `mset`, and the two conses
   onto `bindlist`/`mspeclist`, with `munbind`'s pop. Symbol lists built at
   run time; the body reads the bound special and accumulates a checked sum.
-- [ ] 3.2 Measure both arms at 1, 2, 5 and 10 variables per binding,
+- [x] 3.2 Measure both arms at 1, 2, 5 and 10 variables per binding,
   reporting nanoseconds and bytes consed per binding, and the ratio. Verify
   the checksum and that timings scale with the variable count (a flat curve
-  means the compiler elided the binding).
-- [ ] 3.3 Count `mbind` frequency: a redefinition wrapper loaded at run time
+  means the compiler elided the binding). *Result:* progv 12 ns and 0 bytes
+  per binding against mbind's 129 ns and 80 bytes. A fifth measurement was
+  added: reading a special costs 3.81 ns globally bound and 3.75 ns under
+  progv, so dynamic binding does not make the evaluator's reads dearer.
+- [x] 3.3 Count `mbind` frequency: a redefinition wrapper loaded at run time
   (printing to `*debug-io*`), run over the core test suite and over
   `wc_systematic` at 10 tolerances. Record calls, total variables bound, and
-  calls per second for each.
-- [ ] 3.4 Combine 3.2 and 3.3 into an estimated whole-workload percentage
+  calls per second for each. *Result:* 1,299,078 calls at 1.00 variables
+  per call for wc_systematic (4.7 s); 2,352,130 at 1.65 for the core suite
+  (42.5 s), which passed under the wrapper.
+- [x] 3.4 Combine 3.2 and 3.3 into an estimated whole-workload percentage
   cost, stating the arithmetic.
-- [ ] 3.5 **Gate C.** Judge against design D4's spike B thresholds. Stop for
-  review.
+- [x] 3.5 **Gate C.** Judge against design D4's spike B thresholds. Stop for
+  review. *Result:* PASS. Estimated change is a saving on both workloads:
+  -0.2% at the upper bound, where the threshold allowed +5%. Report:
+  `research/multithreading/results/progv-stage-c.md`.
 
 ## 4. Stage D: decision
 
