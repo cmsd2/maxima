@@ -2777,7 +2777,7 @@ TDNEG TDZERO TDPN) to store it, and also sets SIGN."
                               (and above (dls above y))))))))
            (deq x y))
          ;; Whatever the walk established about the target, if anything.
-         (or (sel y +labs) '$pnz))))))
+         (or (+labs-of y) '$pnz))))))
 
 (defun deq (x y)
   (cond
@@ -2868,7 +2868,7 @@ TDNEG TDZERO TDPN) to store it, and also sets SIGN."
 	 (if (eq x (cadar f)) (dls (caddar f) y) (dls (cadar f) y)))))
 
 (defun dgq (x y)
-  (let ((sgn (sel x +labs)))
+  (let ((sgn (+labs-of x)))
     ;; A label already on X combines with "X >= this node": $NZ makes it an
     ;; equality, $PN a strict inequality, and $POS or $ZERO is already at least
     ;; this strong.
@@ -2899,7 +2899,7 @@ TDNEG TDZERO TDPN) to store it, and also sets SIGN."
 	 (if (eq x (cadar f)) (dgq (caddar f) y) (dgq (cadar f) y)))))
 
 (defun dlq (x y)
-  (let ((sgn (sel x +labs)))
+  (let ((sgn (+labs-of x)))
     (cond
       ((member sgn '($neg $zero)) nil)
       ((eq '$pz sgn) (deq x y))
@@ -2924,7 +2924,7 @@ TDNEG TDZERO TDPN) to store it, and also sets SIGN."
 	 (if (eq x (cadar f)) (dlq (caddar f) y) (dlq (cadar f) y)))))
 
 (defun dnq (x y)
-  (let ((sgn (sel x +labs)))
+  (let ((sgn (+labs-of x)))
     (cond
       ((member sgn '($pos $neg)) nil)
       ((eq '$pz sgn) (dgr x y))
@@ -2972,7 +2972,7 @@ TDNEG TDZERO TDPN) to store it, and also sets SIGN."
 ;; never return.
 
 (defun dmark (x m)
-  (let ((old (sel x +labs)))
+  (let ((old (+labs-of x)))
     ;; A label left by the BEG/QUEUE+P engine is a bit cell, not a sign
     ;; symbol: treat it as no label. CLEAR normally prevents this, but a
     ;; stale label must not poison the walk.
@@ -2991,7 +2991,7 @@ TDNEG TDZERO TDPN) to store it, and also sets SIGN."
         ;; stale (the node no longer on +LABS), this relists it so the
         ;; next CLEAR sweeps it (the pre-meet DMARK did the same).
         (push x +labs)
-        (push+sto (sel x +labs) meet)
+        (setf (+labs-of x) meet)
         nil)))))))
 
 (defun daddgr (flag x)

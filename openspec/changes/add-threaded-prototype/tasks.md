@@ -28,22 +28,35 @@ before starting the next. Stage 2 is the only one that changes `src/`.
 
 ## 2. Stage B: per-query fact labels (`src/`)
 
-- [ ] 2.1 Read the label lifecycle end to end: `clear`, the `+labs`,
+- [x] 2.1 Read the label lifecycle end to end: `clear`, the `+labs`,
   `-labs`, `ulabs` accessor macros, `unlab`, `selector`, the `putprop`
   sites, and `*labindex*`/`+lab-high-bit+`. Decide whether a per-query table
-  makes the numbering redundant (design, open question).
-- [ ] 2.2 Replace the property writes with a per-query table behind the
+  makes the numbering redundant (design, open question). *Result:* the
+  numbering stays; the diff moves only where the marks live. The read also
+  found that ULABS is overloaded: LOCAL() in mlisp.lisp writes it
+  persistently to hide facts, so ULABS stays on the plist and is out of
+  this change's scope; the guard refuses any run that writes it. COMPAR's
+  DMARK stores a sign symbol under the same +LABS key that QUEUE+P stores a
+  bit cell, and each checks for the other's leftovers, so both moved to one
+  table to keep that behaviour.
+- [x] 2.2 Replace the property writes with a per-query table behind the
   selector macros, bound per thread. Keep the diff inside the macros and
-  their call sites; do not reindent or rename surrounding code.
-- [ ] 2.3 Bind the label state where `$sign`/`$asksign` rebind the sign
+  their call sites; do not reindent or rename surrounding code. *Result:*
+  two files, 50 insertions and 33 deletions; the generated +LABS/-LABS
+  accessor macros are left defined but unused.
+- [x] 2.3 Bind the label state where `$sign`/`$asksign` rebind the sign
   specials, so a nested query cannot see an outer query's table.
-- [ ] 2.4 Verify the labels are gone: run the write observer over
+- [x] 2.4 Verify the labels are gone: run the write observer over
   `wc_systematic` and confirm no `+labs`/`-labs`/`ulabs` writes on shared
-  nodes remain.
-- [ ] 2.5 **Gate B.** Full suite with share tests green and registry
+  nodes remain. *Result:* plist writes went from |$U_In| (+LABS) to none.
+- [x] 2.5 **Gate B.** Full suite with share tests green and registry
   unchanged; `make check`'s dependency check passing; differential corpus
   with no new diffs; single-thread timing on `wc_systematic` and the suite
-  showing no slowdown outside the noise floor. Stop for review.
+  showing no slowdown outside the noise floor. Stop for review. *Result:*
+  suite 21,498 tests, no unexpected errors, none expected-to-fail-but-passed;
+  depcheck clean; corpus 443 files, 0 differ; timing wc10 4.92 s against
+  5.07 s baseline, core suite 44.39 s against 44.39 s. Report:
+  `research/multithreading/results/threads-stage-b.md`.
 
 ## 3. Stage C: the remaining two fixes
 

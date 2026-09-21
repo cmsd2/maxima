@@ -41,10 +41,22 @@
     "*CANCELLED" "*M" "XA*" "*COLINV*" "*COL*" "*ROW*" "*MAT*" "*JM*"
     "*MINOR1*" "*CHRPS*" "*ACURSOR*" "LIMK" "NN*" "*PRIME" "ANS"
     ;; the binding stack MBIND and MUNBIND push onto
-    "BINDLIST" "MSPECLIST")
+    "BINDLIST" "MSPECLIST"
+    ;; factdb-scratch: the fact database's per-query state (db.lisp), reset
+    ;; by CLEAR at the start of every query
+    "+LABS" "-LABS" "ULABS" "+S" "+SM" "+SL" "-S" "-SM" "-SL" "*LABS*"
+    "*LPRS*" "*LABINDEX*" "*LPRINDEX*" "*MARKS*" "*DB*" "CURRENT" "+L" "-L")
   "Specials the earlier change classified T1: confined by a binding at
    thread entry.  Names, not symbols, because a few live in COMMON-LISP and
    the rest in MAXIMA; see research/multithreading/oracle-churn.tsv.")
+
+(defparameter +thread-fresh-bindings+
+  `(("*+LABS-TABLE*" . ,(lambda () (make-hash-table :test 'eq)))
+    ("*-LABS-TABLE*" . ,(lambda () (make-hash-table :test 'eq))))
+  "Specials a worker binds to a FRESH value rather than to a copy of the
+   global one.  A thread-entry PROGV copies the parent's value by reference,
+   so binding a table that way would hand every thread the same table.  The
+   per-query label tables (db.lisp) are the case: each thread needs its own.")
 
 (defun thread-resolve (name)
   "The symbol NAME denotes, looked up in MAXIMA then COMMON-LISP."
@@ -99,15 +111,22 @@
   "One worker: bind the symbol set, then evaluate its items.  GUARD NIL
    turns the check off, which is only for the negative control that shows
    what happens without confinement."
-  (let* ((has-value (remove-if-not #'boundp symbols))
+  (let* ((fresh (loop for (name . init) in +thread-fresh-bindings+
+                      for s = (thread-resolve name)
+                      when s collect (cons s init)))
+         (copied (remove-if (lambda (s) (assoc s fresh)) symbols))
+         (has-value (remove-if-not #'boundp copied))
          ;; PROGV binds every symbol in its first list, but only those with
          ;; a corresponding value get one; the rest are bound and unbound,
          ;; which is what a symbol that has no global value should start as.
-         (ordered (append has-value (remove-if #'boundp symbols)))
-         (values (mapcar #'symbol-value has-value))
+         ;; Fresh-valued symbols go first, with a value each thread makes.
+         (ordered (append (mapcar #'car fresh) has-value
+                          (remove-if #'boundp copied)))
+         (values (append (mapcar (lambda (f) (funcall (cdr f))) fresh)
+                         (mapcar #'symbol-value has-value)))
          (bound (make-hash-table :test 'eq :size (* 2 (length symbols))))
          (t0 (pool-now)) (items 0))
-    (dolist (s symbols) (setf (gethash s bound) t))
+    (dolist (s ordered) (setf (gethash s bound) t))
     (progv ordered values
       (let ((*thread-bound* bound)
             (*thread-tolerate* tolerate)

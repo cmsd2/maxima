@@ -62,6 +62,23 @@
 (defvar -labs nil)
 (defvar ulabs nil)
 
+;; The +LABS and -LABS marks a query puts on nodes live in these tables,
+;; keyed by node, instead of on the nodes' property lists.  The lists +LABS
+;; and -LABS above still record which nodes the query marked, so that CLEAR
+;; sweeps exactly those.  DMARK in COMPAR stores a sign symbol under the same
+;; key that QUEUE+P stores a bit cell, and each checks for the other's
+;; leftovers; one table per indicator keeps that behaviour as it was.  A
+;; threaded caller binds both tables per thread, so that queries in
+;; different threads on the same node never see each other's marks.
+(defvar *+labs-table* (make-hash-table :test 'eq))
+(defvar *-labs-table* (make-hash-table :test 'eq))
+
+(defmacro +labs-of (nd)
+  `(gethash ,nd *+labs-table*))
+
+(defmacro -labs-of (nd)
+  `(gethash ,nd *-labs-table*))
+
 
 (defvar *db*)
 
@@ -123,11 +140,11 @@
   (atom (selector cmark fixnum 0) (selector subc) (selector data)))
 
 (defmacro +labz (x)
-  `(cond ((+labs ,x))
+  `(cond ((+labs-of ,x))
     (t '(0))))
 
 (defmacro -labz (x)
-  `(cond ((-labs ,x))
+  `(cond ((-labs-of ,x))
     (t '(0))))
 
 (defmacro =labz (x)
@@ -180,7 +197,7 @@
   (= (logior x +lab-high-bit+) (logior y +lab-high-bit+)))
 
 (defun marknd (nd)
-  (cond ((+labs nd))
+  (cond ((+labs-of nd))
 	((= *lprindex* (incf *labindex*))
 	 (break))
 	(t (push (cons nd (lab *labindex*)) *labs*)
@@ -227,11 +244,11 @@
 	 (putprop dat (copyn lab) 'ulabs))))
 
 (defun queue+p (nd lab)
-  (cond ((atom (setq *db* (+labs nd)))
+  (cond ((atom (setq *db* (+labs-of nd)))
 	 ;; No label, or a stale sign symbol left by DMARK: Start fresh.
 	 (push nd +labs)
 	 (setq lab (unlab lab))
-	 (putprop nd (copyn (logior +lab-high-bit+ lab)) '+labs))
+	 (setf (+labs-of nd) (copyn (logior +lab-high-bit+ lab))))
 	((subp lab *db*)
 	 nil)
 	((subp *lab-high-lab* *db*)
@@ -250,10 +267,10 @@
 	  (push nd +s))))
 
 (defun queue-p (nd lab)
-  (cond ((null (setq *db* (-labs nd)))
+  (cond ((null (setq *db* (-labs-of nd)))
 	 (push nd -labs)
 	 (setq lab (unlab lab))
-	 (putprop nd (copyn (logior +lab-high-bit+ lab)) '-labs))
+	 (setf (-labs-of nd) (copyn (logior +lab-high-bit+ lab))))
 	((subp lab *db*)
 	 nil)
 	((subp *lab-high-lab* *db*)
@@ -318,7 +335,7 @@
 (defun dq+ ()
   (if +s
       (prog2
-	  (xorm (zl-get (car +s) '+labs) *lab-high-lab*)
+	  (xorm (+labs-of (car +s)) *lab-high-lab*)
 	  (car +s)
 	(cond ((not (eq +s +sm))
 	       (setq +s (cdr +s)))
@@ -333,7 +350,7 @@
 (defun dq- ()
   (if -s
       (prog2
-	  (xorm (-labs (car -s)) *lab-high-lab*)
+	  (xorm (-labs-of (car -s)) *lab-high-lab*)
 	  (car -s)
 	(cond ((not (eq -s -sm))
 	       (setq -s (cdr -s)))
@@ -348,8 +365,8 @@
 (defun clear ()
   (when dbtrace
     (format *trace-output* "~%CLEAR: clearing ~A" *marks*))
-  (mapc #'(lambda (sym) (push+sto (sel sym +labs) nil)) +labs)
-  (mapc #'(lambda (sym) (push+sto (sel sym -labs) nil)) -labs)
+  (mapc #'(lambda (sym) (remhash sym *+labs-table*)) +labs)
+  (mapc #'(lambda (sym) (remhash sym *-labs-table*)) -labs)
   (mapc #'(lambda (sym) (zl-remprop sym 'ulabs)) ulabs)
   (setq +s nil
 	+sm nil
@@ -410,7 +427,7 @@
       (let ((p (dq+)))
         (if (eq y p)
           (return t)
-          (mark+ p (+labs p)))))))
+          (mark+ p (+labs-of p)))))))
 
 (defun kind-any-of (x kinds)
   "Looks up the kind information on symbol X and returns the first kind that is
@@ -427,7 +444,7 @@
              (k (member p kinds :test #'eq)))
         (if k
           (return (car k))
-          (mark+ p (+labs p)))))))
+          (mark+ p (+labs-of p)))))))
 
 (defun kind-all-of-p (x kinds)
   "Returns T iff (KINDP X K) would return T for all K in KINDS. This is faster
@@ -443,7 +460,7 @@
           (when (and (member p kinds :test #'eq)
                      (zerop (decf remaining)))
             (return))
-          (mark+ p (+labs p)))))
+          (mark+ p (+labs-of p)))))
     (zerop remaining)))
 
 (defun decl-complex-kind (x)
@@ -460,7 +477,7 @@
             (progn
               (when (eq p '$complex)
                 (setq complexp t))
-              (mark+ p (+labs p)))))))))
+              (mark+ p (+labs-of p)))))))))
 
 (defun true* (pat)
   (if (eq (car pat) 'kind)
@@ -689,8 +706,8 @@
 
 (defun killframe (cl)
   (mapc #'(lambda (dat) (uncntxt dat) (remov dat)) (sel cl data))
-  (zl-remprop cl '+labs)
-  (zl-remprop cl '-labs)
+  (remhash cl *+labs-table*)
+  (remhash cl *-labs-table*)
   (zl-remprop cl 'obj)
   (zl-remprop cl 'var)
   (zl-remprop cl 'fact))
@@ -838,13 +855,13 @@
     (cond
 	  (+s
 	   (setq x (dq+))
-	   (setq lab (+labs x))
+	   (setq lab (+labs-of x))
 	   (if (zerop (logand (unlab lab) (unlab (-labz x))))
 	       (mark+ x lab)
 	       (return t)))
 	  (-s
 	   (setq x (dq-))
-	   (setq lab (-labs x))
+	   (setq lab (-labs-of x))
 	   (if (zerop (logand (unlab lab) (unlab (+labz x))))
 	       (mark- x lab)
 	       (return t)))
@@ -878,10 +895,10 @@
 		 (if (not (eq (car lis) cl))
 		     (mid- (car lis) lab))))))
 	((eq (cadar dat) cl)
-	 (if (+labs (caar dat))		; V1
-	     (end (caddar dat) (dbv lab (+labs (caar dat)))))
-	 (if (-labs (caddar dat))	; F4
-	     (end- (caar dat) (lpr lab (-labs (caddar dat))))))))
+	 (if (+labs-of (caar dat))		; V1
+	     (end (caddar dat) (dbv lab (+labs-of (caar dat)))))
+	 (if (-labs-of (caddar dat))	; F4
+	     (end- (caar dat) (lpr lab (-labs-of (caddar dat))))))))
 
 (defun mark- (cl lab)
   (when dbtrace
@@ -917,10 +934,10 @@
 	       (cancel lab dat)
 	       (mid- (caddar dat) lab))))
 	((eq (caddar dat) cl)
-	 (if (+labs (caar dat))		; A2
-	     (end- (cadar dat) (dba (+labs (caar dat)) lab)))
-	 (if (+labs (cadar dat))	; F6
-	     (end- (caar dat) (lpr (+labs (cadar dat)) lab))))))
+	 (if (+labs-of (caar dat))		; A2
+	     (end- (cadar dat) (dba (+labs-of (caar dat)) lab)))
+	 (if (+labs-of (cadar dat))	; F6
+	     (end- (caar dat) (lpr (+labs-of (cadar dat)) lab))))))
 
 ;;	     in out                    in out                  ins  in out
 ;;	-----------		-------------             ----------------
