@@ -3,23 +3,27 @@ before starting the next. Stage 2 is the only one that changes `src/`.
 
 ## 1. Stage A: the runner, on safe work
 
-- [ ] 1.1 Extract the symbol set for `wc_systematic` from the recorded
+- [x] 1.1 Extract the symbol set for `wc_systematic` from the recorded
   write trace (`results/region-*.md` and the record-hook log of the
   archived observation change). List every symbol assigned or unbound
   inside the region, plus `bindlist` and `mspeclist`. Verify the set against
-  a fresh trace rather than the stored one.
-- [ ] 1.2 Write the runner (`research/multithreading/tools/threads.lisp`):
+  a fresh trace rather than the stored one. *Result:* the fresh trace
+  matches the stored one: $WC_NUM, $WC_TOL, $WC_TOLNUM assigned, and
+  |$U_In| receiving +LABS plist writes. Full set is 46 symbols.
+- [x] 1.2 Write the runner (`research/multithreading/tools/threads.lisp`):
   *p* threads released together, static and dynamic scheduling, each thread
   entering through `progv` over the symbol set, results collected in index
   order. No Maxima algebra yet.
-- [ ] 1.3 Write the guard: an `*environment-write-hook*` function checking
+- [x] 1.3 Write the guard: an `*environment-write-hook*` function checking
   each assigned symbol against a per-thread table, signalling an error that
   names the symbol. Verify it fires by assigning an unbound symbol inside
   the region on purpose, and that it does not fire for the bound set.
-- [ ] 1.4 Confinement test: a worker assigns a Maxima variable; verify no
+- [x] 1.4 Confinement test: a worker assigns a Maxima variable; verify no
   other worker and not the parent sees it, and the parent's value after the
-  region is unchanged.
-- [ ] 1.5 **Gate A.** Report the symbol set, the guard firing on a planted
+  region is unchanged. *Result:* verified, with a negative control showing
+  the same work without the binding: workers read back whichever write
+  landed last and the value escaped to the parent, silently.
+- [x] 1.5 **Gate A.** Report the symbol set, the guard firing on a planted
   escape, and the confinement test. Stop for review.
 
 ## 2. Stage B: per-query fact labels (`src/`)
