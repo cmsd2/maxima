@@ -230,7 +230,7 @@
            (optimize speed))
   (let ((ring (when (plusp ring-size) (make-array ring-size
                                                   :initial-element nil)))
-        (ri 0) (sum 0) (b0 (sb-ext:get-bytes-consed)) (t0 (pool-now)))
+        (ri 0) (sum 0) (t0 (pool-now)))
     (declare (type fixnum ri) (type integer sum))
     (dotimes (i iterations)
       (declare (type fixnum i))
@@ -245,8 +245,13 @@
     (when ring (setf sum (logand (+ sum (if (aref ring 0) 1 0))
                                  most-positive-fixnum)))
     (make-gcspike-worker
+     ;; SB-EXT:GET-BYTES-CONSED counts the whole image, so a thread reading it
+     ;; also counts what every other thread allocated.  This worker's own
+     ;; allocation is the node size times the iteration count; the run's
+     ;; measured total is taken once, by the parent (threads) or by each
+     ;; child in its own image (processes).
      :id id :iterations iterations :checksum sum
-     :bytes (- (sb-ext:get-bytes-consed) b0)
+     :bytes (* iterations (gcspike-node-bytes depth width))
      :wall (pool-secs (- (pool-now) t0)))))
 
 (defun gcspike-calibrate (iterations &rest args
@@ -282,3 +287,203 @@
         (gcspike-report label stats wall bytes)
         (format *debug-io* "  node ~d B~%" (gcspike-node-bytes depth width))
         (values)))))
+
+;;; ------------------------------------------------------------ the two arms
+;;;
+;;; Both arms run the identical GCSPIKE-WORK loop with the identical
+;;; iteration count, so they differ only in the mechanism.  Every worker
+;;; computes the same checksum; the harness checks that they agree, which
+;;; catches a worker that silently did less work than it was asked for.
+;;;
+;;; The thread arm gathers collector statistics for the whole image: the hook
+;;; list is global and the hook runs in whichever thread collected.  Under a
+;;; stop-the-world collector only one thread runs it at a time, so it needs no
+;;; lock.  The process arm gathers them per child, in that child's own image.
+
+(defun gcspike-worker-plist (w &optional stats)
+  (append (list :id (gcspike-w-id w)
+                :iterations (gcspike-w-iterations w)
+                :checksum (gcspike-w-checksum w)
+                :bytes (gcspike-w-bytes w)
+                :busy (gcspike-w-wall w))
+          (when stats
+            (list :collections (gcspike-count stats)
+                  :gc_real (pool-secs (gcspike-real-time stats))
+                  :promoted (gcspike-promoted stats)))))
+
+(defun gcspike-run-threads (p iterations work-args)
+  "Start P threads, release them together, and join them.  Returns
+   (values workers wall stats)."
+  (let ((ready (sb-thread:make-semaphore :count 0))
+        (start (sb-thread:make-semaphore :count 0))
+        (wall 0d0) (workers '()) (snapshot nil) (measured 0))
+    (with-gcspike-stats (s)
+      (let ((threads
+              (loop for k below p
+                    collect (sb-thread:make-thread
+                             (lambda ()
+                               (sb-thread:signal-semaphore ready)
+                               (sb-thread:wait-on-semaphore start)
+                               (apply #'gcspike-work k iterations work-args))
+                             :name (format nil "gcspike-~D" k)))))
+        (dotimes (k p) (sb-thread:wait-on-semaphore ready))
+        (let ((t0 (pool-now))
+              (b0 (sb-ext:get-bytes-consed)))
+          (sb-thread:signal-semaphore start p)
+          (setf workers (mapcar #'sb-thread:join-thread threads)
+                wall (pool-secs (- (pool-now) t0))
+                measured (- (sb-ext:get-bytes-consed) b0)
+                snapshot (copy-gcspike-gc s)))))
+    (values workers wall snapshot measured)))
+
+(defun gcspike-child (k iterations work-args out-path)
+  "Run in a forked child: measure the loop in this image, write one readable
+   plist, exit without unwinding."
+  (let ((code 0))
+    (unwind-protect
+         (handler-case
+             (let ((w nil) (stats nil) (measured 0))
+               (with-gcspike-stats (s)
+                 (let ((b0 (sb-ext:get-bytes-consed)))
+                   (setf w (apply #'gcspike-work k iterations work-args)
+                         measured (- (sb-ext:get-bytes-consed) b0)
+                         stats (copy-gcspike-gc s))))
+               (with-open-file (out out-path :direction :output
+                                             :if-exists :supersede)
+                 (with-standard-io-syntax
+                   (prin1 (append (gcspike-worker-plist w stats)
+                                  (list :measured_bytes measured
+                                        :maxrss (pool-maxrss)))
+                          out))
+                 (terpri out)
+                 (finish-output out)))
+           (error (e)
+             (setq code 3)
+             (ignore-errors
+              (with-open-file (out (concatenate 'string out-path ".err")
+                                   :direction :output :if-exists :supersede)
+                (format out "~A~%" e)))))
+      (sb-ext:exit :code code :abort t))))
+
+(defvar *gcspike-run-counter* 0)
+
+(defun gcspike-run-processes (p iterations work-args &key (tmp-dir "/tmp/"))
+  "Fork P children running the same loop.  Returns (values worker-plists wall
+   bad-exits).  Forking needs a single-threaded image, so this must run
+   before any benchmark thread is created."
+  (let ((nthreads (length (sb-thread:list-all-threads))))
+    (unless (= nthreads 1)
+      (error "gcspike-run-processes: image runs ~D threads; fork needs one"
+             nthreads)))
+  (let* ((run (format nil "~Agcspike-~D-~D" tmp-dir (sb-posix:getpid)
+                      (incf *gcspike-run-counter*)))
+         (paths (loop for k below p collect (format nil "~A-w~D.out" run k)))
+         (pids '()) (bad-exits 0) (workers '()))
+    (finish-output *standard-output*)
+    (let ((t0 (pool-now)))
+      (dotimes (k p)
+        (let ((pid (sb-posix:fork)))
+          (when (zerop pid)
+            (gcspike-child k iterations work-args (nth k paths)))
+          (push pid pids)))
+      (dolist (pid pids)
+        (multiple-value-bind (wpid status) (sb-posix:waitpid pid 0)
+          (declare (ignore wpid))
+          (unless (and (sb-posix:wifexited status)
+                       (zerop (sb-posix:wexitstatus status)))
+            (incf bad-exits))))
+      (let ((wall (pool-secs (- (pool-now) t0))))
+        (dolist (path paths)
+          (when (probe-file path)
+            (with-open-file (in path)
+              (with-standard-io-syntax
+                (let ((*package* (find-package :maxima)))
+                  (push (read in nil nil) workers))))
+            (delete-file path)))
+        (values (remove nil workers) wall bad-exits)))))
+
+(defun gcspike-median (xs)
+  (let ((v (sort (copy-list xs) #'<)))
+    (if (null v) 0d0 (nth (floor (length v) 2) v))))
+
+(defun gcspike-run (arm p iterations record-path
+                    &key (label "") (round 0) (warmup nil) work-args extra)
+  "One measurement: ARM is :THREADS or :PROCESSES.  Appends a JSON record."
+  (gcspike-live-bytes)
+  (let (workers wall stats (bad-exits 0) (measured 0))
+    (ecase arm
+      (:threads
+       (multiple-value-setq (workers wall stats measured)
+         (gcspike-run-threads p iterations work-args))
+       (setf workers (mapcar #'gcspike-worker-plist workers)))
+      (:processes
+       (multiple-value-setq (workers wall bad-exits)
+         (gcspike-run-processes p iterations work-args))
+       (setf measured (reduce #'+ (mapcar (lambda (w)
+                                            (getf w :measured_bytes 0))
+                                          workers)))))
+    (let* ((checksums (mapcar (lambda (w) (getf w :checksum)) workers))
+           (bytes measured)
+           (nominal (reduce #'+ (mapcar (lambda (w) (getf w :bytes 0))
+                                        workers)))
+           (busy (mapcar (lambda (w) (getf w :busy 0d0)) workers))
+           ;; The thread arm's collector statistics cover the image; the
+           ;; process arm's are per child, so they are summed for GC time and
+           ;; collections and reported per worker as well.
+           (gc-real (if stats (pool-secs (gcspike-real-time stats))
+                        (reduce #'+ (mapcar (lambda (w) (getf w :gc_real 0d0))
+                                            workers))))
+           (collections (if stats (gcspike-count stats)
+                            (reduce #'+ (mapcar (lambda (w)
+                                                  (getf w :collections 0))
+                                                workers))))
+           (promoted (if stats (gcspike-promoted stats)
+                         (reduce #'+ (mapcar (lambda (w) (getf w :promoted 0))
+                                             workers))))
+           (ok (and (= (length workers) p)
+                    (zerop bad-exits)
+                    checksums
+                    (every (lambda (c) (eql c (first checksums)))
+                           (rest checksums)))))
+      (pool-append-record
+       record-path
+       (append
+        (list :label label :arm (string-downcase (symbol-name arm))
+              :workers p :iterations iterations :round round :warmup warmup
+              :ok ok :bad_exits bad-exits
+              :checksum (or (first checksums) 0)
+              :wall wall :bytes_consed bytes :nominal_bytes nominal
+              :alloc_rate_gbs (/ bytes (max wall 1d-9) 1073741824d0)
+              :collections collections
+              :gc_real gc-real
+              ;; Under a stop-the-world collector every worker is halted for
+              ;; the whole of GC, so this fraction applies to each of them.
+              :stopped_share (if (eq arm :threads) (/ gc-real (max wall 1d-9))
+                                 (/ (/ gc-real (max p 1)) (max wall 1d-9)))
+              :promoted promoted
+              :busy_mean (/ (reduce #'+ busy) (max (length busy) 1))
+              :busy_max (if busy (reduce #'max busy) 0d0)
+              :busy_min (if busy (reduce #'min busy) 0d0)
+              :busy_median (gcspike-median busy)
+              :maxrss (pool-maxrss)
+              :worker_maxrss (mapcar (lambda (w) (getf w :maxrss 0)) workers)
+              :pause_mean (if (and stats (gcspike-durations stats))
+                              (/ (reduce #'+ (gcspike-durations stats))
+                                 (length (gcspike-durations stats)))
+                              0d0)
+              :pause_max (if (and stats (gcspike-durations stats))
+                             (reduce #'max (gcspike-durations stats)) 0d0))
+        extra
+        (list :collector (gcspike-collector-features))))
+      (format *debug-io*
+              ;; ~:[~; warmup~] always pops its argument; ~@[ does not,
+              ;; and leaves it to shift every value after it.
+              "~&~a ~(~a~) p=~d~:[~; warmup~]: ~,2F s, ~,1F GB, ~,3F GB/s, ~
+               ~d collections, GC ~,2F s (~,2F% stopped), busy ~,2F-~,2F s, ~
+               checksum ~:[MISMATCH~;ok~]~%"
+              label arm p warmup wall (/ bytes 1073741824d0)
+              (/ bytes (max wall 1d-9) 1073741824d0) collections gc-real
+              (* 100 (/ gc-real (max wall 1d-9)))
+              (if busy (reduce #'min busy) 0d0)
+              (if busy (reduce #'max busy) 0d0) ok)
+      ok)))

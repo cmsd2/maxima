@@ -30,29 +30,36 @@ before starting the next. No stage changes `src/` or `share/`.
 
 ## 2. Stage B: spike A, GC scaling
 
-- [ ] 2.1 Add the thread arm: *p* threads each running the calibrated loop
+- [x] 2.1 Add the thread arm: *p* threads each running the calibrated loop
   for a fixed iteration count, joined by the parent. Record per-thread
   iterations and elapsed time, `*gc-run-time*` delta, collection count and
   per-collection durations via an `sb-ext:*after-gc-hooks*` hook.
-- [ ] 2.2 Add the process arm: fork *p* workers before any thread exists,
+- [x] 2.2 Add the process arm: fork *p* workers before any thread exists,
   each running the identical loop; parent waits and collects each worker's
   record. Verify the checksum from both arms matches the single-threaded
   value.
-- [ ] 2.3 Write the driver (`gcspike-bench.sh`): one fresh image per
+- [x] 2.3 Write the driver (`gcspike-bench.sh`): one fresh image per
   measurement, arm × *p* ∈ {1,2,4,8} × rounds, first round discarded, order
   rotated, machine state recorded per record (total CPU, load average, power
   source, battery, SBCL version, collector features, commit). Refuse to
   start when total CPU exceeds 250% of one core.
-- [ ] 2.4 Dry run at small iteration counts. Verify records parse, both arms
-  produce equal checksums, and the refusal-when-busy check fires.
-- [ ] 2.5 Full sweep on a quiet machine. Write
-  `research/multithreading/results/gcspike.jsonl`.
-- [ ] 2.6 Report (`gcspike_report.py`): per arm and *p*, median wall,
+- [x] 2.4 Dry run at small iteration counts. Verify records parse, both arms
+  produce equal checksums, and the refusal-when-busy check fires. *Result:*
+  both pass. The dry run also caught the thread arm double-counting
+  allocation: `sb-ext:get-bytes-consed` is image-wide, so each thread was
+  counting every other thread's bytes.
+- [x] 2.5 Full sweep on a quiet machine. Write
+  `research/multithreading/results/gcspike.jsonl`, plus
+  `gcspike-sens.jsonl` for the survival-matched sensitivity config.
+- [x] 2.6 Report (`gcspike_report.py`): per arm and *p*, median wall,
   spread, speedup against that arm's own *p* = 1, efficiency, GC time,
   collection count, per-thread stopped share. State whether GC or bandwidth
   accounts for the gap from ideal.
-- [ ] 2.7 **Gate B.** Judge against design D4's spike A thresholds, written
-  before the data. Stop for review.
+- [x] 2.7 **Gate B.** Judge against design D4's spike A thresholds, written
+  before the data. Stop for review. *Result:* PASS. At p = 4, threads
+  3.63x against processes 3.85x, ratio 0.94 (threshold 0.90), thread
+  efficiency 91% (threshold 70%). Report:
+  `research/multithreading/results/gcspike-stage-b.md`.
 
 ## 3. Stage C: spike B, binding cost
 
