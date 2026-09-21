@@ -292,6 +292,15 @@ No steady-state write required a lock, and nothing changed a definition.
   misses transient special-variable writes that are restored to the same
   value within an iteration. The fact database's query queue pointers are
   of this kind; they are covered by the same T2 fix as the labels.
+  *This blind spot bit.* The threaded prototype
+  ([09-threaded-prototype.md](09-threaded-prototype.md)) found `loclist`,
+  the `local()` frame stack that every `mlambda` call, `block` and `ev`
+  pushes and pops, exactly here: restored within every iteration, so
+  never in a snapshot diff, never in the hook's view, and shared across
+  threads until it corrupted. `*mlambda-call-stack*` was classified but
+  is an adjustable vector mutated in place, which a per-thread binding
+  does not confine. Both were caught by the result comparison at a
+  workload size that opened the race windows, not by the observer.
 - **Plausibility is not speedup.** Each iteration here is a small `subst`
   and simplification. Whether threads beat a process pool for this workload
   is the separate measurement planned in doc 02, and it has not been made.
