@@ -144,9 +144,14 @@ performance cores** and about **5× on all 10 cores**, at a memory cost of
 about 156 MB per worker. The following
 bear on whether it can:
 
-- **GC won't stop threads:** at a 1.5% GC share, doc 02's GC-only ceiling
-  is about 65×. For this workload, contention on shared structure and
-  memory bandwidth decide, not GC.
+- **GC won't stop threads, but it does cost them:** at a 1.5% GC share,
+  doc 02's GC-only ceiling is about 65×. That ceiling assumes the cost of
+  collection per byte stays constant as threads are added, and
+  [08-thread-feasibility-spikes.md](08-thread-feasibility-spikes.md)
+  measured that it does not: threads collect more often than processes for
+  the same bytes and promote more each time, costing 6% against processes
+  at four workers. The direction of this bullet holds, its arithmetic does
+  not.
 - **Processes pay about 8% overhead at 10 workers** (fork plus result
   transfer), and about 2% at one worker. Threads would avoid most of it, since results need no
   serialization and no fork is needed. That is the margin threads could
@@ -154,6 +159,11 @@ bear on whether it can:
 - **The process pool needed no changes to Maxima,** and it already works
   with `wrstcse` as shipped (the corner-counter change isn't needed for
   processes). For this workload, processes are the practical answer today.
+- **Threads were measured after this benchmark.** Spike A in
+  [08-thread-feasibility-spikes.md](08-thread-feasibility-spikes.md) ran
+  the thread arm this document could not, on a synthetic workload matched
+  to `wc_systematic`'s allocation profile, and the threading path was
+  recommended on the result.
 - **The mailing list's 3.8× on 4 cores** is consistent with these
   measurements. We get 3.4× on this machine's 4 performance cores, with
   fine-grained items and fork overhead included, and the Amdahl fit puts the

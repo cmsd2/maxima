@@ -145,7 +145,7 @@ T(p) ≈ T_setup + (N · w) / p + G(p) + I(p) + T_merge
 |---|---|---|
 | N | Number of items (`k^t` corners for `wc_systematic`) | Known in advance |
 | w | Time per item excluding GC | (total run time − GC time) / N |
-| f_gc | Share of run time spent in GC | `:lisp (time ...)` reports GC time and bytes consed |
+| f_gc | 1.5-1.6% | the GC-only ceiling 1/f_gc ≈ 65× is an overestimate: see below |
 | CV | Per-item cost variation (standard deviation / mean) | Time each item inside the loop body |
 | r | Speedup from compiling once and evaluating numerically | Time one item symbolically and compiled |
 
@@ -240,6 +240,18 @@ Data: `research/multithreading/results/pool-quiet.jsonl`.
 | Memory per worker | 83–156 MB peak RSS (upper bound, includes shared pages) | the 8 GB concern does not arise at this size |
 | Serial fraction σ (Amdahl, *p* ≤ 4) | 0.053–0.059 | κ constrained to 0: no measurable coherency cost on the performance cores |
 | USL over all *p* (dynamic) | σ = 0.049, κ = 0.0052 | fits only loosely: the machine has two kinds of core |
+
+**The thread ceiling above is too generous.** `S_threads(p) ≤ 1 / (f_gc +
+(1 − f_gc) / p)` assumes GC cost per byte does not change as threads are
+added. Spike A
+([08-thread-feasibility-spikes.md](08-thread-feasibility-spikes.md))
+measured threads collecting more often than processes for the same bytes
+(the nursery trigger is image-wide, so the interval falls from 51 MB at one
+thread to 34 MB at eight) and promoting more each time. A thread at four
+workers spends 6.8% of its wall time halted where a process worker spends
+1.5%, against the 1.5% this table's f_gc would predict for both. Threads
+still scaled to 91% efficiency on four cores, so the conclusion holds and
+the bound does not.
 
 Measured process speedup is **3.35× at 4 workers** and **4.99× at 10** (12
 tolerances, static). Efficiency is 80–85% on the performance cores and about

@@ -90,15 +90,19 @@ before starting the next. No stage changes `src/` or `share/`.
 
 ## 4. Stage D: decision
 
-- [ ] 4.1 Write `docs/multithreading/08-thread-feasibility-spikes.md`:
+- [x] 4.1 Write `docs/multithreading/08-thread-feasibility-spikes.md`:
   method, results, thresholds, verdict per spike, and one recommendation
   (proceed to step 1 / proceed with a stated design change / stop and ship a
   process-based parallel map). Include the caveats from design D1 and the
-  Risks section.
-- [ ] 4.2 Cross-reference it from doc 07's closing section and from doc 02's
+  Risks section. *Result:* both spikes pass; recommendation is to proceed
+  to step 1.
+- [x] 4.2 Cross-reference it from doc 07's closing section and from doc 02's
   measured-parameters table (GC scaling with threads was previously an
-  assumption there).
-- [ ] 4.3 Record reproduction instructions: commands, machine state
+  assumption there). *Result:* both corrected. The 65x GC-only ceiling
+  assumed cost per byte is fixed as threads are added; it is not.
+- [x] 4.3 Record reproduction instructions: commands, machine state
   requirements, and which results file each number comes from.
-- [ ] 4.4 **Gate D.** Present the recommendation. Stop for review before
-  archiving.
+- [x] 4.4 **Gate D.** Present the recommendation. Stop for review before
+  archiving. *Recommendation:* proceed to step 1 (binding rebuilt on
+  progv), then the warm-up iteration, the per-query fact labels, and the
+  wrstcse one-liner.
