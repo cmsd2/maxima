@@ -42,6 +42,16 @@
     "*MINOR1*" "*CHRPS*" "*ACURSOR*" "LIMK" "NN*" "*PRIME" "ANS"
     ;; the binding stack MBIND and MUNBIND push onto
     "BINDLIST" "MSPECLIST"
+    ;; the local() frame stack: every MLAMBDA call, block and ev pushes a
+    ;; frame on entry and MUNLOCAL pops it on exit, with MPROPLIST and
+    ;; FACTLIST alongside.  Not in the earlier classification: the hook
+    ;; cannot see a Lisp PUSH, and the oracle's snapshot never saw a change
+    ;; because each iteration restores it (doc 05's stated blind spot).
+    ;; Shared across threads, lost-update pushes and pops let MUNLOCAL walk
+    ;; past a thread's own frames and "restore" whatever it found there.
+    "LOCLIST" "MPROPLIST" "FACTLIST"
+    ;; set with a raw SETQ by every block statement
+    "$%%"
     ;; factdb-scratch: the fact database's per-query state (db.lisp), reset
     ;; by CLEAR at the start of every query
     "+LABS" "-LABS" "ULABS" "+S" "+SM" "+SL" "-S" "-SM" "-SL" "*LABS*"
@@ -64,6 +74,19 @@
    a hash table, an adjustable vector, anything mutated in place.  Lists are
    safe only because Maxima grows them with fresh conses on the thread's own
    binding.")
+
+(defparameter +thread-copied-names+
+  '("$VALUES" "$MYOPTIONS" "$FUNCTIONS" "$PROPS" "$ARRAYS" "$MACROS"
+    "$RULES" "$DEPENDENCIES")
+  "Specials a worker binds to a COPY of the global list (COPY-LIST), the
+   third binding class.  These are the info lists doc 03 classed T3:
+   ADD2LNC grows them with NCONC and MUNBIND-MAKUNBOUND shrinks $VALUES
+   with DELETE, both destructive on the list's own conses.  A PROGV
+   binding by reference would share exactly those conses, and every block
+   entry in every thread splices them: wc_systematic's three locals are
+   unbound between calls, so each MSET of one runs ADD2LNC on $VALUES and
+   each MUNBIND runs DELETE.  At 6 tolerances the window was never hit; at
+   10, every run with four or more threads corrupted the list.")
 
 (defun thread-resolve (name)
   "The symbol NAME denotes, looked up in MAXIMA then COMMON-LISP."
@@ -143,15 +166,23 @@
   (let* ((fresh (loop for (name . init) in +thread-fresh-bindings+
                       for s = (thread-resolve name)
                       when s collect (cons s init)))
-         (copied (remove-if (lambda (s) (assoc s fresh)) symbols))
+         (copied-lists (loop for name in +thread-copied-names+
+                             for s = (thread-resolve name)
+                             when (and s (boundp s) (listp (symbol-value s)))
+                               collect s))
+         (copied (remove-if (lambda (s) (or (assoc s fresh)
+                                            (member s copied-lists)))
+                            symbols))
          (has-value (remove-if-not #'boundp copied))
          ;; PROGV binds every symbol in its first list, but only those with
          ;; a corresponding value get one; the rest are bound and unbound,
          ;; which is what a symbol that has no global value should start as.
          ;; Fresh-valued symbols go first, with a value each thread makes.
-         (ordered (append (mapcar #'car fresh) has-value
+         (ordered (append (mapcar #'car fresh) copied-lists has-value
                           (remove-if #'boundp copied)))
          (values (append (mapcar (lambda (f) (funcall (cdr f))) fresh)
+                         (mapcar (lambda (s) (copy-list (symbol-value s)))
+                                 copied-lists)
                          (mapcar #'symbol-value has-value)))
          (bound (make-hash-table :test 'eq :size (* 2 (length symbols))))
          (t0 (pool-now)) (items 0))

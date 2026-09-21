@@ -76,3 +76,7 @@ NN*	algorithm-scratch	working variable
 *PRIME	algorithm-scratch	modular arithmetic prime
 *ENVIRONMENT-WRITE-HOOK*	oracle-artefact	the oracle binds the hook off around its own snapshots
 ANS	algorithm-scratch	Lisp special (declare-top in pois3.lisp, hayat.lisp, matcom-generated rules) setq without a binding on the evaluation path; the writer was not identified
+LOCLIST	factdb-scratch	local() frame stack, pushed by every MLAMBDA call, block and ev, popped by MUNLOCAL; restored within an iteration, so the snapshot never saw it (found by the threaded prototype)
+MPROPLIST	factdb-scratch	saved property lists for local() frames, alongside LOCLIST
+FACTLIST	factdb-scratch	saved fact lists for local() frames, alongside LOCLIST
+$%%	eval-trace	set by every block statement with a raw SETQ

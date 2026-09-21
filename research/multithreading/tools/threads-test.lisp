@@ -40,6 +40,14 @@
   (sleep 0.05)
   (symbol-value '$tt_fresh))
 
+(defmfun $tt_block (i)
+  "A block binding a symbol that is unbound between calls, as
+   wc_systematic's locals are: MBIND assigns it (ADD2LNC on $VALUES, since
+   it is not BOUNDP) and MUNBIND restores it to unbound (DELETE)."
+  (mbind '($tt_blockvar) (list i) nil)
+  (prog1 (* 2 (symbol-value '$tt_blockvar))
+    (munbind '($tt_blockvar))))
+
 (defun tt-run-stage-a ()
   (let* ((extra (list '$tt_var))
          (syms (thread-symbol-set extra)))
@@ -142,6 +150,26 @@
         (thread-run '$tt_plist 4 2 :symbols syms :tolerate '(tt-indicator) :warmup nil)
       (declare (ignore results workers wall))
       (tt-check "guard allows a tolerated plist write" ok))
+
+    ;; 4b. A block local that is unbound between calls: MSET runs ADD2LNC
+    ;; on $VALUES and MUNBIND runs DELETE, both destructive.  With $VALUES
+    ;; copied per thread, the parent's list is untouched afterwards and
+    ;; every worker's block completes.
+    (let* ((before (copy-list $values))
+           (with-loc (thread-symbol-set (list '$tt_var '$tt_blockvar))))
+      (makunbound '$tt_blockvar)
+      (multiple-value-bind (results workers wall ok)
+          (thread-run '$tt_block 400 4 :symbols with-loc :warmup nil)
+        (declare (ignore workers wall))
+        (tt-check "unbound block local: 400 blocks on 4 threads complete" ok)
+        (tt-check "unbound block local: every result right"
+                  (loop for i below 400 always (eql (aref results i) (* 2 i))))
+        (tt-check "unbound block local: parent's $values untouched"
+                  (equal $values before)
+                  (format nil "~d entries before, ~d after"
+                          (length before) (length $values)))
+        (tt-check "unbound block local: still unbound in the parent"
+                  (not (boundp '$tt_blockvar)))))
 
     ;; 5. The warm-up runs item 0 once, in the parent, before the region:
     ;; the parent's variable holds item 0's write afterwards, and the guard

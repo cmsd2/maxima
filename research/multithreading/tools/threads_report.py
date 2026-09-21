@@ -17,6 +17,19 @@ import json
 import statistics as st
 
 
+def load_records(path):
+    """One JSON record per line.  Records written before the writer escaped
+    control characters can be split across lines by a newline inside an
+    error message; a continuation line never starts with "{", so rejoin."""
+    lines = []
+    for l in open(path).read().split("\n"):
+        if l.startswith("{") or not lines:
+            lines.append(l)
+        else:
+            lines[-1] += "\\n" + l
+    return [json.loads(l) for l in lines if l.strip()]
+
+
 def med(xs):
     return st.median(xs) if xs else float("nan")
 
@@ -32,7 +45,7 @@ def main():
     ap.add_argument("--keep-warmup", action="store_true",
                     help="report warm-up-round records too (dry runs)")
     a = ap.parse_args()
-    recs = [json.loads(l) for l in open(a.sweep)]
+    recs = load_records(a.sweep)
     timed = [r for r in recs if a.keep_warmup or not r.get("warmup_round")]
     if not timed:
         print("no timed records (every record is a warm-up round; pass "

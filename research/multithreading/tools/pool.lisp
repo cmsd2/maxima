@@ -12,10 +12,28 @@
 (defun pool-now () (get-internal-real-time))
 (defun pool-secs (ticks) (/ ticks (float internal-time-units-per-second 1d0)))
 
+(defun pool-json-string (v)
+  "V as a JSON string literal.  ~S escapes only the quote and the
+   backslash; a newline inside an error message would split the record
+   across lines, so control characters are escaped here."
+  (with-output-to-string (o)
+    (write-char #\" o)
+    (loop for c across v
+          do (case c
+               (#\" (write-string "\\\"" o))
+               (#\\ (write-string "\\\\" o))
+               (#\Newline (write-string "\\n" o))
+               (#\Tab (write-string "\\t" o))
+               (#\Return (write-string "\\r" o))
+               (t (if (< (char-code c) 32)
+                      (format o "\\u~4,'0X" (char-code c))
+                      (write-char c o)))))
+    (write-char #\" o)))
+
 (defun pool-json-value (v)
   (cond ((null v) "null")
         ((eq v t) "true")
-        ((stringp v) (format nil "~S" v))
+        ((stringp v) (pool-json-string v))
         ((integerp v) (format nil "~D" v))
         ((realp v) (format nil "~,6F" v))
         ((and (consp v) (keywordp (car v)))

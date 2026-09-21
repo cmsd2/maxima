@@ -35,6 +35,9 @@
                 :first_mismatch mismatch :missing missing
                 :guard (and guard t) :symbols (length syms)
                 :errors (mapcar #'princ-to-string errors)
+                ;; A failed worker's backtrace, so the record explains itself.
+                :backtraces (remove nil (mapcar (lambda (w) (getf w :backtrace))
+                                                workers))
                 :violations (loop for w in workers
                                   append (mapcar #'princ-to-string
                                                  (getf w :violations)))
