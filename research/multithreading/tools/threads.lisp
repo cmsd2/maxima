@@ -52,6 +52,19 @@
     "LOCLIST" "MPROPLIST" "FACTLIST"
     ;; set with a raw SETQ by every block statement
     "$%%"
+    ;; Every other global that mlisp, suprv1, comm, simp or float writes
+    ;; with PUSH, SETQ, SETF or INCF (audit, stage D).  Most are specials
+    ;; the caller LET-binds before the SETQ, so already thread-local when
+    ;; written; the rest are option lists only kill, reset, declare or
+    ;; tellrat change, which the frozen environment forbids.  Bound anyway:
+    ;; the two stacks above were missed by exactly this kind of reasoning,
+    ;; and a binding nothing writes costs nothing.
+    "$ALGEBRAIC" "$ALIASES" "$DEBUGMODE" "$DOALLMXOPS" "$EXPOP" "$FACTORFLAG"
+    "$FEATURES" "$GRADEFS" "$NUMER" "$RATVARS" "$STRUCTURES" "*ALPHABET*"
+    "*AUTOLOADED-FILES*" "*MDEBUG*" "*MOPL*" "*NOUNL*" "*NOUNSFLAG*"
+    "*OLD-IBASE*" "*PLUSFLAG*" "*RATWEIGHTS" "*REFCHKL*" "*RULESW*" "A"
+    "ARYP" "DERIVFLAG" "MLOCP" "NOEVALARGS" "RULEFCNL" "SIGN" "TELLRATLIST"
+    "THISTIME" "TLIST" "TRANSP"
     ;; factdb-scratch: the fact database's per-query state (db.lisp), reset
     ;; by CLEAR at the start of every query
     "+LABS" "-LABS" "ULABS" "+S" "+SM" "+SL" "-S" "-SM" "-SL" "*LABS*"
