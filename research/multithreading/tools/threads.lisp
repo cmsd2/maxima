@@ -93,31 +93,53 @@
 (defvar *thread-violations* nil
   "Per worker: what the guard caught, newest first.")
 
-(defun thread-guard (op obj ind val)
-  "Refuse a write this design cannot confine.  Installed as
-   *ENVIRONMENT-WRITE-HOOK* inside a worker only."
-  (declare (ignore val))
+(defvar *thread-writes* nil
+  "Per worker, observe mode only: alist of ((op object indicator) . count).")
+
+(defun thread-check (op obj ind)
+  "NIL if this write is confined, else a (op object indicator) violation."
   (case op
     ((:assign :unbind)
      ;; An assignment to a symbol with no binding in this thread reaches the
      ;; global value cell, where every other thread sees it.
      (unless (and (symbolp obj) (gethash obj *thread-bound*))
-       (push (list op obj ind) *thread-violations*)
-       (error "thread-guard: ~a of ~s is not confined to this thread: ~
-               the symbol was not bound at thread entry" op obj)))
+       (list op obj ind)))
     (t
      ;; Property writes land on shared structure whatever is bound.
      (unless (member ind *thread-tolerate*)
-       (push (list op (if (consp obj) :node obj) ind) *thread-violations*)
-       (error "thread-guard: ~a of ~s on ~s writes shared structure"
-              op ind (if (consp obj) :node obj))))))
+       (list op (if (consp obj) :node obj) ind)))))
+
+(defun thread-guard (op obj ind val)
+  "Refuse a write this design cannot confine.  Installed as
+   *ENVIRONMENT-WRITE-HOOK* inside a worker only."
+  (declare (ignore val))
+  (let ((v (thread-check op obj ind)))
+    (when v
+      (push v *thread-violations*)
+      (if (member op '(:assign :unbind))
+          (error "thread-guard: ~a of ~s is not confined to this thread: ~
+                  the symbol was not bound at thread entry" op obj)
+          (error "thread-guard: ~a of ~s on ~s writes shared structure"
+                 op ind (second v))))))
+
+(defun thread-observe (op obj ind val)
+  "Record every write this worker makes, flagging what the guard would have
+   refused, without stopping.  For the write trace under threads."
+  (declare (ignore val))
+  (let* ((key (list op (if (consp obj) :node obj) ind))
+         (cell (assoc key *thread-writes* :test #'equal)))
+    (if cell (incf (cdr cell)) (push (cons key 1) *thread-writes*)))
+  (let ((v (thread-check op obj ind)))
+    (when v (pushnew v *thread-violations* :test #'equal))))
 
 ;;; ----------------------------------------------------------- the runner
 
-(defun thread-worker (k fn indices results symbols tolerate guard)
-  "One worker: bind the symbol set, then evaluate its items.  GUARD NIL
-   turns the check off, which is only for the negative control that shows
-   what happens without confinement."
+(defun thread-worker (k fn next results symbols tolerate guard
+                      &optional observe)
+  "One worker: bind the symbol set, then evaluate items until NEXT returns
+   NIL.  GUARD NIL turns the check off, which is only for the negative
+   control that shows what happens without confinement.  OBSERVE records
+   every write instead of refusing any."
   (let* ((fresh (loop for (name . init) in +thread-fresh-bindings+
                       for s = (thread-resolve name)
                       when s collect (cons s init)))
@@ -138,7 +160,9 @@
       (let ((*thread-bound* bound)
             (*thread-tolerate* tolerate)
             (*thread-violations* '())
-            (*environment-write-hook* (and guard #'thread-guard))
+            (*thread-writes* '())
+            (*environment-write-hook* (cond (observe #'thread-observe)
+                                            (guard #'thread-guard)))
             ;; An error that escapes HANDLER-CASE -- one signalled inside an
             ;; unwind cleanup, say -- would otherwise put this thread into
             ;; the interactive debugger, reading *DEBUG-IO*, and the run
@@ -168,9 +192,10 @@
                                               (with-output-to-string (o)
                                                 (sb-debug:print-backtrace
                                                  :stream o :count 40)))))))
-                (dolist (i indices)
-                  (setf (aref results i) (pool-item fn i))
-                  (incf items)))
+                (loop for i = (funcall next)
+                      while i
+                      do (setf (aref results i) (pool-item fn i))
+                         (incf items)))
             (error (e)
               (return-from thread-worker
                 (list :id k :items items :error (princ-to-string e)
@@ -179,20 +204,28 @@
                       :busy (pool-secs (- (pool-now) t0)))))))
         (list :id k :items items :error nil
               :violations *thread-violations*
+              :writes (and observe (reverse *thread-writes*))
               :busy (pool-secs (- (pool-now) t0)))))))
 
 (defvar *thread-join-timeout* 600
   "Seconds the parent waits for a worker before reporting it stuck.")
 
-(defun thread-indices (k n p mode)
+(defun thread-next-fn (k n p mode counter)
+  "A closure yielding this worker's next item index, or NIL when done.
+   :STATIC gives worker K the indices congruent to K mod P.  :DYNAMIC
+   hands out indices in order through a shared counter advanced with
+   SB-EXT:ATOMIC-INCF, the thread analogue of the process pool's token
+   pipe."
   (ecase mode
-    (:static (loop for i from k below n by p collect i))
-    (:block (let* ((per (ceiling n p)) (lo (* k per)))
-              (loop for i from lo below (min n (+ lo per)) collect i)))))
+    (:static (let ((i k))
+               (lambda () (when (< i n) (prog1 i (incf i p))))))
+    (:dynamic (lambda ()
+                (let ((i (sb-ext:atomic-incf (car counter))))
+                  (when (< i n) i))))))
 
 (defun thread-run (fn n p &key (mode :static) (symbols nil) (tolerate nil)
-                            (guard t) (warmup t) (record-path nil)
-                            (label "threads") extra)
+                            (guard t) (warmup t) (observe nil)
+                            (record-path nil) (label "threads") extra)
   "Evaluate items 0..N-1 of Maxima function FN over P threads.  Returns
    (values results workers wall ok).
 
@@ -206,16 +239,16 @@
          (results (make-array n :initial-element '%missing))
          (ready (sb-thread:make-semaphore :count 0))
          (start (sb-thread:make-semaphore :count 0))
+         (counter (list 0))
          (threads (loop for k below p
                         collect (let ((k k))
                                   (sb-thread:make-thread
                                    (lambda ()
                                      (sb-thread:signal-semaphore ready)
                                      (sb-thread:wait-on-semaphore start)
-                                     (thread-worker k fn
-                                                    (thread-indices k n p mode)
-                                                    results syms tolerate
-                                                    guard))
+                                     (thread-worker
+                                      k fn (thread-next-fn k n p mode counter)
+                                      results syms tolerate guard observe))
                                    :name (format nil "mx-~D" k))))))
     (dotimes (k p) (sb-thread:wait-on-semaphore ready))
     (let ((t0 (pool-now)))
@@ -243,6 +276,7 @@
                          :items n :wall wall :ok ok
                          :symbols (length syms) :guard (and guard t)
                          :warmup (and warmup (plusp n) t)
+                         :observe (and observe t)
                          :tolerated (mapcar #'princ-to-string tolerate)
                          :errors (mapcar #'princ-to-string errors)
                          :missing missing

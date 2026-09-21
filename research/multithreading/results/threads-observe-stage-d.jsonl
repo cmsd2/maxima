@@ -1,0 +1,4 @@
+{"kind":"sequential","label":"obs-static-seq","items":729,"wall":0.023671,"gc":0.000000,"bytes_consed":23258736,"maxrss":128286720,"item_times":null}
+{"label":"obs-static","kind":"wc-threads","workers":4,"mode":"static","items":729,"wall":0.011552,"ok":true,"correct":true,"first_mismatch":null,"errors":null,"violations":null,"symbols":66,"guard":true,"warmup":true,"tolerated":null,"busy_max":0.011455,"maxrss":142786560}
+{"kind":"sequential","label":"obs-dynamic-seq","items":729,"wall":0.024169,"gc":0.000000,"bytes_consed":23258752,"maxrss":128253952,"item_times":null}
+{"label":"obs-dynamic","kind":"wc-threads","workers":4,"mode":"dynamic","items":729,"wall":0.011660,"ok":true,"correct":true,"first_mismatch":null,"errors":null,"violations":null,"symbols":66,"guard":true,"warmup":true,"tolerated":null,"busy_max":0.011524,"maxrss":142770176}
