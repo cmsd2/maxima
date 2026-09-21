@@ -52,11 +52,18 @@
 
 (defparameter +thread-fresh-bindings+
   `(("*+LABS-TABLE*" . ,(lambda () (make-hash-table :test 'eq)))
-    ("*-LABS-TABLE*" . ,(lambda () (make-hash-table :test 'eq))))
+    ("*-LABS-TABLE*" . ,(lambda () (make-hash-table :test 'eq)))
+    ;; Same constructor as globals.lisp.  MLAMBDA pushes a frame onto this
+    ;; vector per call and pops it in an unwind cleanup; four threads sharing
+    ;; one drove the fill pointer to -4 (stage C).
+    ("*MLAMBDA-CALL-STACK*" . ,(lambda () (make-array 30 :fill-pointer 0
+                                                         :adjustable t))))
   "Specials a worker binds to a FRESH value rather than to a copy of the
    global one.  A thread-entry PROGV copies the parent's value by reference,
-   so binding a table that way would hand every thread the same table.  The
-   per-query label tables (db.lisp) are the case: each thread needs its own.")
+   so binding a mutable object that way hands every thread the same object:
+   a hash table, an adjustable vector, anything mutated in place.  Lists are
+   safe only because Maxima grows them with fresh conses on the thread's own
+   binding.")
 
 (defun thread-resolve (name)
   "The symbol NAME denotes, looked up in MAXIMA then COMMON-LISP."
@@ -131,19 +138,51 @@
       (let ((*thread-bound* bound)
             (*thread-tolerate* tolerate)
             (*thread-violations* '())
-            (*environment-write-hook* (and guard #'thread-guard)))
-        (handler-case
-            (dolist (i indices)
-              (setf (aref results i) (pool-item fn i))
-              (incf items))
-          (error (e)
-            (return-from thread-worker
-              (list :id k :items items :error (princ-to-string e)
-                    :violations *thread-violations*
-                    :busy (pool-secs (- (pool-now) t0))))))
+            (*environment-write-hook* (and guard #'thread-guard))
+            ;; An error that escapes HANDLER-CASE -- one signalled inside an
+            ;; unwind cleanup, say -- would otherwise put this thread into
+            ;; the interactive debugger, reading *DEBUG-IO*, and the run
+            ;; would hang.  Abort the thread instead; the parent sees a
+            ;; missing worker record.
+            (*debugger-hook* (lambda (c h)
+                               (declare (ignore h))
+                               (format *error-output*
+                                       "~&thread-worker ~d: debugger ~
+                                        reached: ~a~%" k c)
+                               (sb-thread:abort-thread)))
+            (sb-ext:*invoke-debugger-hook*
+              (lambda (c h)
+                (declare (ignore h))
+                (format *error-output*
+                        "~&thread-worker ~d: debugger reached: ~a~%" k c)
+                (sb-thread:abort-thread))))
+        (let ((backtrace nil))
+          (handler-case
+              (handler-bind ((error (lambda (e)
+                                      (declare (ignore e))
+                                      ;; Capture the stack where the error
+                                      ;; was signalled, before HANDLER-CASE
+                                      ;; unwinds it.
+                                      (unless backtrace
+                                        (setf backtrace
+                                              (with-output-to-string (o)
+                                                (sb-debug:print-backtrace
+                                                 :stream o :count 40)))))))
+                (dolist (i indices)
+                  (setf (aref results i) (pool-item fn i))
+                  (incf items)))
+            (error (e)
+              (return-from thread-worker
+                (list :id k :items items :error (princ-to-string e)
+                      :backtrace backtrace
+                      :violations *thread-violations*
+                      :busy (pool-secs (- (pool-now) t0)))))))
         (list :id k :items items :error nil
               :violations *thread-violations*
               :busy (pool-secs (- (pool-now) t0)))))))
+
+(defvar *thread-join-timeout* 600
+  "Seconds the parent waits for a worker before reporting it stuck.")
 
 (defun thread-indices (k n p mode)
   (ecase mode
@@ -152,10 +191,17 @@
               (loop for i from lo below (min n (+ lo per)) collect i)))))
 
 (defun thread-run (fn n p &key (mode :static) (symbols nil) (tolerate nil)
-                            (guard t) (record-path nil) (label "threads")
-                            extra)
+                            (guard t) (warmup t) (record-path nil)
+                            (label "threads") extra)
   "Evaluate items 0..N-1 of Maxima function FN over P threads.  Returns
-   (values results workers wall ok)."
+   (values results workers wall ok).
+
+   WARMUP evaluates item 0 once in this thread before any worker starts,
+   so that autoload, cache population and other first-use writes happen
+   once, single-threaded, outside the region; the workers then compute
+   every item including item 0, and the warm-up's value is discarded."
+  (when (and warmup (plusp n))
+    (pool-item fn 0))
   (let* ((syms (or symbols (thread-symbol-set)))
          (results (make-array n :initial-element '%missing))
          (ready (sb-thread:make-semaphore :count 0))
@@ -174,7 +220,17 @@
     (dotimes (k p) (sb-thread:wait-on-semaphore ready))
     (let ((t0 (pool-now)))
       (sb-thread:signal-semaphore start p)
-      (let* ((workers (mapcar #'sb-thread:join-thread threads))
+      (let* ((workers (mapcar (lambda (th)
+                                (let ((w (sb-thread:join-thread
+                                          th :default :aborted
+                                             :timeout *thread-join-timeout*)))
+                                  (if (eq w :aborted)
+                                      (list :id (sb-thread:thread-name th)
+                                            :items 0
+                                            :error "worker aborted or timed out"
+                                            :violations nil :busy 0d0)
+                                      w)))
+                              threads))
              (wall (pool-secs (- (pool-now) t0)))
              (errors (remove nil (mapcar (lambda (w) (getf w :error)) workers)))
              (missing (count '%missing results))
@@ -186,6 +242,7 @@
                          :mode (string-downcase (symbol-name mode))
                          :items n :wall wall :ok ok
                          :symbols (length syms) :guard (and guard t)
+                         :warmup (and warmup (plusp n) t)
                          :tolerated (mapcar #'princ-to-string tolerate)
                          :errors (mapcar #'princ-to-string errors)
                          :missing missing

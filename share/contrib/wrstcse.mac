@@ -87,8 +87,6 @@ values between -1 and 1. */
 wc_systematic(wc_x,[wc_valuespertol]):=block(
     [
         %wc_tols,
-        /* The index x of the tol[x] being currently assigned a value to */
-        wc_tolnum,
         wc_numoftols
     ],
     /* Default the number of values per tolerance parameter to 3 */
@@ -111,8 +109,9 @@ wc_systematic(wc_x,[wc_valuespertol]):=block(
     makelist(
         (
             subst(
-                (
-                    wc_tolnum:-1,
+                /* The index x of the tol[x] being currently assigned a value
+                   to, local to this corner so corners are independent */
+                block([wc_tolnum:-1],
                     makelist(
                         (
                             wc_tolnum:wc_tolnum+1,

@@ -67,7 +67,7 @@
     ;; 2. Confinement: each worker sees its own write, the parent sees none.
     (setf $tt_var :parent)
     (multiple-value-bind (results workers wall ok)
-        (thread-run '$tt_confined 8 4 :symbols syms)
+        (thread-run '$tt_confined 8 4 :symbols syms :warmup nil)
       (declare (ignore wall))
       (tt-check "confined run completes" ok
                 (format nil "~a" (remove nil (mapcar (lambda (w)
@@ -89,7 +89,7 @@
     (setf $tt_var :parent)
     (let ((without (remove '$tt_var syms)))
       (multiple-value-bind (results workers wall ok)
-          (thread-run '$tt_confined 8 4 :symbols without :guard nil)
+          (thread-run '$tt_confined 8 4 :symbols without :guard nil :warmup nil)
         (declare (ignore workers wall ok))
         (tt-check "negative control: unbound writes collide"
                   (notevery (lambda (i) (eql (aref results i) i))
@@ -108,7 +108,7 @@
       (tt-check "an unbound symbol stays in the set"
                 (member '$tt_fresh with-fresh))
       (multiple-value-bind (results workers wall ok)
-          (thread-run '$tt_fresh_write 8 4 :symbols with-fresh)
+          (thread-run '$tt_fresh_write 8 4 :symbols with-fresh :warmup nil)
         (declare (ignore workers wall))
         (tt-check "unbound symbol: run completes" ok)
         (tt-check "unbound symbol: each worker read back its own write"
@@ -120,7 +120,7 @@
     ;; 3. The guard fires on a symbol outside the set.
     (setf $tt_loose :parent)
     (multiple-value-bind (results workers wall ok)
-        (thread-run '$tt_escape 4 2 :symbols syms)
+        (thread-run '$tt_escape 4 2 :symbols syms :warmup nil)
       (declare (ignore results wall))
       (let ((errs (remove nil (mapcar (lambda (w) (getf w :error)) workers))))
         (tt-check "guard refuses the unconfined write" (and (not ok) errs)
@@ -133,15 +133,29 @@
 
     ;; 4. The guard reports a plist write, and tolerates one when told to.
     (multiple-value-bind (results workers wall ok)
-        (thread-run '$tt_plist 4 2 :symbols syms)
+        (thread-run '$tt_plist 4 2 :symbols syms :warmup nil)
       (declare (ignore results wall))
       (tt-check "guard refuses an untolerated plist write" (not ok)
                 (first (remove nil (mapcar (lambda (w) (getf w :error))
                                            workers)))))
     (multiple-value-bind (results workers wall ok)
-        (thread-run '$tt_plist 4 2 :symbols syms :tolerate '(tt-indicator))
+        (thread-run '$tt_plist 4 2 :symbols syms :tolerate '(tt-indicator) :warmup nil)
       (declare (ignore results workers wall))
       (tt-check "guard allows a tolerated plist write" ok))
+
+    ;; 5. The warm-up runs item 0 once, in the parent, before the region:
+    ;; the parent's variable holds item 0's write afterwards, and the guard
+    ;; is not involved because no worker is running yet.
+    (setf $tt_var :parent)
+    (multiple-value-bind (results workers wall ok)
+        (thread-run '$tt_confined 8 4 :symbols syms :warmup t)
+      (declare (ignore workers wall))
+      (tt-check "warm-up: run completes" ok)
+      (tt-check "warm-up: item 0 ran in the parent" (eql $tt_var 0)
+                (format nil "parent holds ~s" $tt_var))
+      (tt-check "warm-up: workers still confined"
+                (loop for i below 8 always (eql (aref results i) i))))
+    (setf $tt_var :parent)
 
     (format *debug-io* "~&;; stage A checks: ~:[all passed~;~:*~d FAILED~]~%"
             (if (plusp *tt-failures*) *tt-failures* nil))

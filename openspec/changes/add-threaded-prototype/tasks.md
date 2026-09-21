@@ -60,17 +60,26 @@ before starting the next. Stage 2 is the only one that changes `src/`.
 
 ## 3. Stage C: the remaining two fixes
 
-- [ ] 3.1 `share/contrib/wrstcse.mac`: make `wc_tolnum` local to each
+- [x] 3.1 `share/contrib/wrstcse.mac`: make `wc_tolnum` local to each
   iteration. One line. Verify `wc_systematic` results are unchanged at 4
   and 6 tolerances, and that the package's own tests still pass.
-- [ ] 3.2 Add the warm-up iteration to the runner, before the region, and
+  *Result:* identical at both sizes against the unchanged package;
+  rtest_wrstcse 97/97.
+- [x] 3.2 Add the warm-up iteration to the runner, before the region, and
   record in each run that it happened.
-- [ ] 3.3 Run `wc_systematic` on the thread pool for the first time, at 2
-  threads, checking every result against the sequential list.
-- [ ] 3.4 **Gate C.** Report correctness at 1, 2 and 4 threads, and any
+- [x] 3.3 Run `wc_systematic` on the thread pool for the first time, at 2
+  threads, checking every result against the sequential list. *Result:*
+  correct at 1 and 2; at 4 a worker died with a fill-pointer of -4 in
+  MLAMBDA's cleanup: *MLAMBDA-CALL-STACK* was bound by reference to one
+  shared vector. Fresh per thread now; then 20/20 correct at 1, 2, 4, 8.
+- [x] 3.4 **Gate C.** Report correctness at 1, 2 and 4 threads, and any
   guard firing. A guard firing here is the expected way to discover a
   symbol the trace missed: add it to the set, say which, and note why the
-  trace missed it. Stop for review.
+  trace missed it. Stop for review. *Result:* no guard firing; the escape
+  was a VECTOR-PUSH on a shared vector, below the guard's reach, caught by
+  a Lisp error and the result comparison. One repeat hung in the debugger;
+  workers now abort on debugger entry and the parent joins with a timeout.
+  Report: `research/multithreading/results/threads-stage-c.md`.
 
 ## 4. Stage D: the measurement
 
