@@ -90,13 +90,78 @@ showed both in every run.
 
 ## Task 4.3: the guard's cost
 
-(filled from the sweep: thread runs at four workers with the guard on and
-off)
+Thread runs at four workers with the guard on and off, same rounds:
+
+| Tolerances | Mode | Guard on | Guard off | Difference |
+|---|---|---|---|---|
+| 10 | static | 1.35 s | 1.35 s | −0.1% |
+| 10 | dynamic | 1.35 s | 1.32 s | +2.3% |
+| 12 | static | 16.91 s | 17.90 s | −5.5% |
+| 12 | dynamic | 17.30 s | 17.64 s | −1.9% |
+
+The guard is one hash lookup per assignment, unbind or property write.
+Its cost is not measurable above the run-to-run noise: three of the four
+comparisons have the guarded run faster. Nothing in the thread mode takes
+a lock.
 
 ## Task 4.4: the measurement
 
-(filled from the sweep)
+184 measurements, 46 warm-up round dropped, **0 incorrect**. CPU in use
+before each run 2–219% of one core, none forced past the quiet check,
+on battery throughout. Speedups are against the sequential run; the ratio
+is thread speedup over process speedup.
+
+**10 tolerances (59,049 corners), sequential 4.89 s:**
+
+| Workers | Threads, static | Processes, static | Ratio | Threads, dynamic | Processes, dynamic | Ratio |
+|---|---|---|---|---|---|---|
+| 1 | 1.00× | 0.96× | 1.04 | 0.99× | 0.90× | 1.10 |
+| 2 | 1.93× | 1.77× | 1.09 | 1.93× | 1.66× | 1.16 |
+| **4** | **3.62× (91%)** | **3.36× (84%)** | **1.08** | 3.63× | 3.01× | 1.21 |
+| 8 | 4.62× | 3.88× | 1.19 | 4.68× | 3.84× | 1.22 |
+| 10 | 4.92× | 4.15× | 1.19 | 5.10× | 3.99× | 1.28 |
+
+**12 tolerances (531,441 corners), sequential 61.89 s:**
+
+| Workers | Threads, static | Processes, static | Ratio | Threads, dynamic | Processes, dynamic | Ratio |
+|---|---|---|---|---|---|---|
+| 1 | 1.00× | 0.97× | 1.03 | 0.98× | 0.93× | 1.06 |
+| 2 | 1.93× | 1.84× | 1.05 | 1.91× | 1.72× | 1.11 |
+| **4** | **3.66× (92%)** | **3.47× (87%)** | **1.05** | 3.58× | 3.24× | 1.11 |
+| 8 | 4.55× | 4.53× | 1.01 | 4.59× | 4.50× | 1.02 |
+| 10 | 4.78× | 5.05× | 0.95 | 4.87× | 4.99× | 0.97 |
+
+Paired by round (processes minus threads, static, guard on): threads
+ahead in **3 of 3 rounds at every worker count up to 4**, both sizes,
+both modes. Beyond the performance cores on the larger workload the lead
+goes: 1 of 3 rounds at 8 and 10 workers, mean −0.38 s at 10.
+
+Three readings:
+
+- **Threads win by about the process overhead, and no more.** 5–8% at
+  four workers, static. Doc 07 measured processes paying about 2% at one
+  worker and 8% at ten in fork and result transfer. Threads avoid that and
+  gain nothing else; the loop body is the same code.
+- **Dynamic scheduling favours threads more** (ratio 1.11–1.21 at four
+  workers), because the process pool's dynamic mode waits for every fork
+  before handing out tokens and threads have no fork to wait for.
+- **Past four workers the advantage erodes, then reverses.** On the
+  larger workload the ratio falls from 1.05 at 4 to 1.01 at 8 and 0.95 at
+  10. Spike A's synthetic run gave 0.94 at 4 and 0.86 at 8 for the
+  collector alone; the real workload does better than that because the
+  process pool's own overhead offsets it, but the direction is the same:
+  more threads collect more often and promote more, and processes do not.
 
 ## Gate D verdict
 
-(filled from the sweep, against design D4)
+Design D4: a win needs threads ahead of processes at four workers, static,
+by more than the run-to-run spread, with no lock on a hot path and the
+guard active.
+
+| Size | Threads | Processes | Threads ahead by | Spread | Verdict |
+|---|---|---|---|---|---|
+| 10 tolerances | 1.35 s (3.62×) | 1.45 s (3.36×) | 0.11 s | 0.05 s | **Win** |
+| 12 tolerances | 16.91 s (3.66×) | 17.83 s (3.47×) | 0.92 s | 0.71 s | **Win** |
+
+No lock was added; the guard was active in every scored run. **Win, on
+both sizes**, by a margin about the size of the overhead processes pay.

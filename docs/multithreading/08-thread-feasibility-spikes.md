@@ -161,6 +161,16 @@ synchronisation the T2 fixes add. If step 1 or step 3 needs a lock on a hot
 path, that margin is gone and processes remain the answer for this
 workload.
 
+## What followed
+
+The prototype these spikes recommended is
+[09-threaded-prototype.md](09-threaded-prototype.md). Maxima ran on
+threads, correctly, and beat the process pool at four workers by 5–8%;
+spike A's prediction that the advantage erodes with thread count held on
+the real workload. The restructuring cost this document could not price
+was deferred again: the prototype confined binding by a thread-entry
+`progv` over a traced symbol set and left `mbind` untouched.
+
 ## What these spikes do not settle
 
 - **The restructuring cost.** `progv` wraps a body; `mbind-doit` binds

@@ -159,11 +159,14 @@ bear on whether it can:
 - **The process pool needed no changes to Maxima,** and it already works
   with `wrstcse` as shipped (the corner-counter change isn't needed for
   processes). For this workload, processes are the practical answer today.
-- **Threads were measured after this benchmark.** Spike A in
-  [08-thread-feasibility-spikes.md](08-thread-feasibility-spikes.md) ran
-  the thread arm this document could not, on a synthetic workload matched
-  to `wc_systematic`'s allocation profile, and the threading path was
-  recommended on the result.
+- **Threads were measured after this benchmark, twice.** Spike A in
+  [08-thread-feasibility-spikes.md](08-thread-feasibility-spikes.md) ran a
+  synthetic thread arm matched to `wc_systematic`'s allocation profile.
+  Then [09-threaded-prototype.md](09-threaded-prototype.md) ran the real
+  workload on threads against this pool, same methodology: threads 3.62×
+  and 3.66× at four workers against the pool's 3.36× and 3.47×, a margin
+  about the size of the overhead measured above, eroding to parity or
+  behind at 8–10 workers on the larger workload.
 - **The mailing list's 3.8× on 4 cores** is consistent with these
   measurements. We get 3.4× on this machine's 4 performance cores, with
   fine-grained items and fork overhead included, and the Amdahl fit puts the

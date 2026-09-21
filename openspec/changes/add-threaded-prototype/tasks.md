@@ -83,33 +83,48 @@ before starting the next. Stage 2 is the only one that changes `src/`.
 
 ## 4. Stage D: the measurement
 
-- [ ] 4.1 Extend the sweep driver to run the thread arm beside doc 07's
+- [x] 4.1 Extend the sweep driver to run the thread arm beside doc 07's
   process arm: same workload sizes, fresh image per measurement, discarded
   warm-up round, three timed rounds, rotated order, machine state recorded,
   refusal above 250% CPU.
-- [ ] 4.2 Re-run the write observer under threads, with per-thread
+- [x] 4.2 Re-run the write observer under threads, with per-thread
   attribution, and compare the trace against the single-threaded one. Any
-  new T3 or T4 write stops the stage.
-- [ ] 4.3 Measure what the thread arm spends on the guard and on any
+  new T3 or T4 write stops the stage. *Result:* the trace under threads
+  matched the sequential one exactly (6 writes, none flagged) and the
+  stage still stopped, twice: the first sweep failed every run at four or
+  more workers at 10 tolerances. $VALUES (spliced by ADD2LNC and DELETE)
+  and LOCLIST (pushed and popped by every call, block and ev) are both
+  Lisp-level writes no hook or snapshot saw. Fixed with a copied-list
+  binding class and per-thread stacks; then an audit bound every global
+  the evaluator writes. 101 symbols in three classes.
+- [x] 4.3 Measure what the thread arm spends on the guard and on any
   synchronisation, by running with the guard disabled as a comparison, so a
-  win or loss can be attributed.
-- [ ] 4.4 Full sweep on a quiet machine; report per worker count the median
+  win or loss can be attributed. *Result:* not measurable above the noise
+  (-5.5% to +2.3%); no lock exists.
+- [x] 4.4 Full sweep on a quiet machine; report per worker count the median
   wall, spread, speedup against sequential, and the thread-to-process
-  ratio.
-- [ ] 4.5 **Gate D.** Judge against design D4: a win needs threads ahead of
+  ratio. *Result:* 184 measurements, 0 incorrect. At four workers static:
+  threads 3.62x against processes 3.36x (10 tolerances), 3.66x against
+  3.47x (12). Threads ahead in every round up to four workers; parity or
+  behind at 8-10 workers on the larger workload.
+- [x] 4.5 **Gate D.** Judge against design D4: a win needs threads ahead of
   processes at four workers by more than the run-to-run spread, with no lock
-  on a hot path. Stop for review.
+  on a hot path. Stop for review. *Result:* WIN on both sizes, by 0.11 s
+  against a 0.05 s spread and 0.92 s against 0.71 s. Report:
+  `research/multithreading/results/threads-stage-d.md`.
 
 ## 5. Stage E: decision
 
-- [ ] 5.1 Write `docs/multithreading/09-threaded-prototype.md`: what was
+- [x] 5.1 Write `docs/multithreading/09-threaded-prototype.md`: what was
   fixed, what the guard caught, the measurement, the verdict, and one
   recommendation.
-- [ ] 5.2 Record what stays regardless of the verdict (the fact-database
+- [x] 5.2 Record what stays regardless of the verdict (the fact-database
   change) and what was deferred (`mbind` on `progv`, other workloads,
-  `intern` thread safety).
-- [ ] 5.3 Cross-reference from docs 05, 07 and 08.
-- [ ] 5.4 `ChangeLog` entry for the `src/` change, under the heading that
-  fits the cycle being committed against.
-- [ ] 5.5 **Gate E.** Present the recommendation. Stop for review before
-  archiving.
+  `intern` thread safety). *Result:* in doc 09.
+- [x] 5.3 Cross-reference from docs 05, 07 and 08.
+- [x] 5.4 `ChangeLog` entry for the `src/` change, under the heading that
+  fits the cycle being committed against. *Result:* under "Other
+  changes", commit 2832ddc1f.
+- [x] 5.5 **Gate E.** Present the recommendation. Stop for review before
+  archiving. *Recommendation:* proceed, with the process pool as the
+  shipped option until threads are general; see doc 09.

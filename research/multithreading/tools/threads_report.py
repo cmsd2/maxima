@@ -20,14 +20,28 @@ import statistics as st
 def load_records(path):
     """One JSON record per line.  Records written before the writer escaped
     control characters can be split across lines by a newline inside an
-    error message; a continuation line never starts with "{", so rejoin."""
-    lines = []
+    error message, so a line that does not parse is joined with the lines
+    after it until the result does."""
+    recs, pending = [], ""
     for l in open(path).read().split("\n"):
-        if l.startswith("{") or not lines:
-            lines.append(l)
-        else:
-            lines[-1] += "\\n" + l
-    return [json.loads(l) for l in lines if l.strip()]
+        if not l.strip() and not pending:
+            continue
+        pending = (pending + "\\n" + l) if pending else l
+        try:
+            recs.append(json.loads(pending))
+            pending = ""
+        except json.JSONDecodeError:
+            continue
+    if pending:
+        raise ValueError("unparseable record: %s..." % pending[:120])
+    return recs
+
+
+def guard_on(r):
+    """The thread arm records :guard T or NIL, and NIL reaches JSON as
+    null, so 'off' is False or None; a pool or sequential record has no
+    guard and counts as on."""
+    return r.get("guard", True) is not False and r.get("guard", True) is not None
 
 
 def med(xs):
@@ -84,7 +98,7 @@ def main():
         for mode in ("static", "dynamic"):
             rows = [r for r in good if r["tolerances"] == tol
                     and r["kind"] in ("pool", "threads")
-                    and r.get("mode") == mode and r.get("guard", True) is not False]
+                    and r.get("mode") == mode and guard_on(r)]
             if not rows:
                 continue
             print("### %s scheduling\n" % mode.capitalize())
@@ -115,7 +129,7 @@ def main():
 
         # Guard cost: threads with the guard off, same p and mode.
         off = [r for r in good if r["tolerances"] == tol
-               and r["kind"] == "threads" and r.get("guard") is False]
+               and r["kind"] == "threads" and not guard_on(r)]
         if off:
             print("### Guard cost\n")
             print("| Mode | Workers | Guard on | Guard off | Cost |")
@@ -124,7 +138,7 @@ def main():
                 for p in sorted({r["workers"] for r in off if r["mode"] == mode}):
                     on = [r["wall"] for r in good if r["tolerances"] == tol
                           and r["kind"] == "threads" and r["mode"] == mode
-                          and r["workers"] == p and r.get("guard", True) is not False]
+                          and r["workers"] == p and guard_on(r)]
                     o = [r["wall"] for r in off if r["mode"] == mode
                          and r["workers"] == p]
                     if on and o:
